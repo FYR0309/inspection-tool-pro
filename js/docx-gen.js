@@ -288,9 +288,9 @@ function buildOverview(header, totalItems, completedItems, unfinishedItems) {
       break;
 
     default:
-      // 未知类型，降级为 safety 格式
-      titleText = '安全自检自查整改报告';
-      overviewText = `共提出（${totalItems}）个整改项，已整改完成（${completedItems}）项，未能完成整改（${unfinishedItems}）项。`;
+      // generic 或未知类型：通用概述
+      titleText = `${department || '检查部门'}检查报告`;
+      overviewText = `本次检查共发现${totalItems}个问题，其中已整改完成${completedItems}项，未完成整改${unfinishedItems}项。`;
   }
 
   return { titleText, overviewText };

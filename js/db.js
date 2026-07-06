@@ -1,15 +1,20 @@
-// db.js — IndexedDB 草稿存储 + localStorage 预设
-// v2: keyPath 改为 id，支持最多 6 条草稿
+// db.js — IndexedDB 草稿存储 + localStorage 预设 + 模板管理
+// v3: 新增 templates store，数据库更名为 inspection-tool-pro
 
-const DB_NAME = 'inspection-tool';
-const DB_VERSION = 2;
+const DB_NAME = 'inspection-tool-pro';
+const DB_VERSION = 3;
 const STORE_NAME = 'drafts';
+const TEMPLATE_STORE = 'templates';
 const MAX_DRAFTS = 6;
 
 // ---------- ID 生成 ----------
 
 function generateId() {
   return 'draft_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+}
+
+function generateTemplateId() {
+  return 'tpl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
 }
 
 // ---------- IndexedDB ----------
@@ -34,6 +39,13 @@ function openDB() {
           db.deleteObjectStore(STORE_NAME);
         }
         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+
+      if (oldVersion < 3) {
+        // v2 → v3：新增模板存储
+        if (!db.objectStoreNames.contains(TEMPLATE_STORE)) {
+          db.createObjectStore(TEMPLATE_STORE, { keyPath: 'id' });
+        }
       }
     };
 
@@ -234,4 +246,82 @@ function getTodayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-export { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, MAX_DRAFTS, migrateFromV1 };
+// ---------- 模板管理 ----------
+
+async function saveTemplate(templateData) {
+  const db = await openDB();
+  const tx = db.transaction(TEMPLATE_STORE, 'readwrite');
+  const store = tx.objectStore(TEMPLATE_STORE);
+
+  const record = {
+    id: templateData.id || generateTemplateId(),
+    name: templateData.name,
+    industry: templateData.industry || '通用',
+    description: templateData.description || '',
+    source: templateData.source || 'imported',
+    isBuiltin: templateData.isBuiltin || false,
+    data: templateData.data || templateData,
+    createdAt: templateData.createdAt || new Date().toISOString().slice(0, 10),
+    updatedAt: new Date().toISOString().slice(0, 10),
+  };
+
+  store.put(record);
+
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function deleteTemplate(id) {
+  const db = await openDB();
+  const tx = db.transaction(TEMPLATE_STORE, 'readwrite');
+  const store = tx.objectStore(TEMPLATE_STORE);
+  store.delete(id);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function getCustomTemplate(id) {
+  const db = await openDB();
+  const tx = db.transaction(TEMPLATE_STORE, 'readonly');
+  const store = tx.objectStore(TEMPLATE_STORE);
+  const req = store.get(id);
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function listCustomTemplates() {
+  const db = await openDB();
+  const tx = db.transaction(TEMPLATE_STORE, 'readonly');
+  const store = tx.objectStore(TEMPLATE_STORE);
+  const req = store.getAll();
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => {
+      const result = req.result || [];
+      result.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+      resolve(result);
+    };
+    req.onerror = (e) => reject(e.target.error);
+  });
+}
+
+/** 将模板导出为 .json 文件下载 */
+function exportTemplateAsFile(templateRecord) {
+  const jsonStr = JSON.stringify(templateRecord.data, null, 2);
+  const blob = new Blob([jsonStr], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${templateRecord.name}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, MAX_DRAFTS, migrateFromV1, saveTemplate, deleteTemplate, getCustomTemplate, listCustomTemplates, exportTemplateAsFile };

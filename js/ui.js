@@ -2,7 +2,7 @@
 
 import { getPresets, savePresets, getTodayStr } from './db.js?v=20260701f';
 import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260701f';
-import { getTemplate, listTemplates } from '../templates/templates.js';
+import { getTemplate, listTemplates, refreshCustomTemplate, removeCustomTemplate, isBuiltinTemplate } from '../templates/templates.js';
 
 const pageContainer = document.getElementById('page-container');
 
@@ -36,6 +36,7 @@ function getTypeInfo() {
         name: t.name,
         industry: t.industry,
         description: t.description,
+        isBuiltin: t.isBuiltin !== false,
         icon: INDUSTRY_ICONS[t.industry] || '📄',
         // 简称和颜色从行业派生
         shortName: t.industry || t.name.slice(0, 4),
@@ -53,6 +54,11 @@ function getTypeInfo() {
     };
   }
   return _typeInfoCache;
+}
+
+/** 清除类型信息缓存（模板变更后调用） */
+function clearTypeInfoCache() {
+  _typeInfoCache = null;
 }
 
 function getIndustryColor(industry) {
@@ -157,14 +163,11 @@ function renderHistoryTags(key, onClick) {
 function renderHomePage({ presets, drafts, onSelectType }) {
   const today = getTodayStr();
 
-  // 从模板列表动态生成类型卡片
+  // 从模板列表动态生成类型卡片（分组：内置 / 自定义）
   const typeInfo = getTypeInfo();
-  const typeCards = Object.values(typeInfo).map(t => ({
-    type: t.id,
-    icon: t.icon,
-    title: t.name,
-    desc: t.description,
-  }));
+  const allTemplates = Object.values(typeInfo);
+  const builtinCards = allTemplates.filter(t => t.isBuiltin !== false);
+  const customCards = allTemplates.filter(t => t.isBuiltin === false);
 
   let draftsHtml = '';
   if (drafts && drafts.length > 0) {
@@ -196,18 +199,39 @@ function renderHomePage({ presets, drafts, onSelectType }) {
         🏢 ${escapeHtml(FIXED_COMPANY)} · 👤 ${escapeHtml(FIXED_DEPARTMENT)} · 📅 ${today}
       </div>
 
-      <div style="font-size:11px;color:#999;margin:10px 0;text-align:center;">—— 选择报告类型 ——</div>
-
-      ${typeCards.map(c => `
-        <div class="card card-type-${c.type}" style="display:flex;align-items:center;gap:10px;">
-          <span style="font-size:28px;flex-shrink:0;">${c.icon}</span>
-          <div style="flex:1;min-width:0;" data-action="select-type" data-type="${c.type}">
-            <div class="card-title">${c.title}</div>
-            <div class="card-desc">${c.desc}</div>
+      ${builtinCards.length > 0 ? `
+        <div style="font-size:11px;color:#999;margin:10px 0;text-align:center;">—— 📦 内置模板 ——</div>
+        ${builtinCards.map(c => `
+          <div class="card card-type-${c.id}" style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:28px;flex-shrink:0;">${c.icon}</span>
+            <div style="flex:1;min-width:0;" data-action="select-type" data-type="${c.id}">
+              <div class="card-title">${c.name}</div>
+              <div class="card-desc">${c.description}</div>
+            </div>
+            <button class="type-import-btn" data-action="import-file-type" data-type="${c.id}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入文件到此类型">📥</button>
           </div>
-          <button class="type-import-btn" data-action="import-file-type" data-type="${c.type}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入文件到此类型">📥</button>
-        </div>
-      `).join('')}
+        `).join('')}
+      ` : ''}
+
+      ${customCards.length > 0 ? `
+        <div style="font-size:11px;color:#999;margin:16px 0 10px;text-align:center;">—— 📥 我的模板 ——</div>
+        ${customCards.map(c => `
+          <div class="card card-type-${c.id}" style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:28px;flex-shrink:0;">${c.icon}</span>
+            <div style="flex:1;min-width:0;" data-action="select-type" data-type="${c.id}">
+              <div class="card-title">${c.name}</div>
+              <div class="card-desc">${c.description}</div>
+            </div>
+            <button class="type-import-btn" data-action="import-file-type" data-type="${c.id}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入文件到此类型">📥</button>
+            <button data-action="export-template" data-id="${c.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:6px;flex-shrink:0;" title="导出模板">📤</button>
+            <button data-action="delete-template" data-id="${c.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:6px;flex-shrink:0;" title="删除模板">🗑️</button>
+          </div>
+        `).join('')}
+      ` : ''}
+
+      <div style="text-align:center;margin-top:12px;">
+        <button class="btn btn-outline" id="import-template-btn" style="width:100%;">📥 导入模板（.docx / .json）</button>
+      </div>
 
       ${draftsHtml}
     </div>
@@ -277,7 +301,49 @@ function renderHomePage({ presets, drafts, onSelectType }) {
     } else if (action === 'resume') {
       onSelectType(card.dataset.type, true, card.dataset.id);
     }
+
+    // 模板导出
+    if (action === 'export-template') {
+      e.stopPropagation();
+      const tplId = card.dataset.id;
+      import('./db.js?v=20260701f').then(({ getCustomTemplate, exportTemplateAsFile }) => {
+        getCustomTemplate(tplId).then(record => {
+          if (record) exportTemplateAsFile(record);
+        });
+      });
+      return;
+    }
+
+    // 模板删除
+    if (action === 'delete-template') {
+      e.stopPropagation();
+      const tplId = card.dataset.id;
+      import('./db.js?v=20260701f').then(({ deleteTemplate }) => {
+        deleteTemplate(tplId).then(() => {
+          removeCustomTemplate(tplId);
+          clearTypeInfoCache();
+          import('./db.js?v=20260701f').then(({ listDrafts }) => {
+            listDrafts().then(newDrafts => {
+              renderHomePage({ drafts: newDrafts, onSelectType });
+            });
+          });
+          showToast('模板已删除');
+        }).catch(() => showToast('删除失败'));
+      });
+      return;
+    }
   });
+  // 导入模板按钮（延迟绑定，因为按钮在 innerHTML 中）
+  setTimeout(() => {
+    const importBtn = document.getElementById('import-template-btn');
+    if (importBtn) {
+      importBtn.onclick = () => showImportPanel({ onSelectType, onBack: () => {
+        import('./db.js?v=20260701f').then(({ listDrafts }) => {
+          listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
+        });
+      }});
+    }
+  }, 0);
 }
 
 // ---------- 条目列表页 ----------
@@ -1123,6 +1189,327 @@ function showMergePanel({ parsed, drafts, reportType, onConfirm, onCancel }) {
   });
 }
 
+// ---------- 模板导入面板 ----------
+
+function showImportPanel({ onSelectType, onBack }) {
+  const overlay = document.createElement('div');
+  overlay.id = 'import-panel-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
+      <h3 style="margin-bottom:12px;">📥 导入模板</h3>
+      <p style="font-size:13px;color:#999;margin-bottom:12px;">支持 .json（模板文件）和 .docx（Word模板自动识别）</p>
+
+      <div id="import-drop-zone" style="border:2px dashed #ccc;border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;margin-bottom:12px;transition:border-color 0.2s;">
+        <div style="font-size:40px;margin-bottom:8px;">📂</div>
+        <div style="font-size:14px;color:#666;">点击选择文件或拖拽到此处</div>
+        <input type="file" id="import-file-input" accept=".json,.docx" style="display:none;">
+      </div>
+
+      <div id="import-status" style="display:none;text-align:center;padding:12px;background:#fdf3e0;border-radius:10px;margin-bottom:10px;">
+        <span class="spinner" style="margin-right:8px;vertical-align:middle;"></span>
+        <span id="import-status-text">正在解析...</span>
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline btn-block" id="import-cancel-btn">取消</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  document.getElementById('import-cancel-btn').onclick = () => {
+    document.body.removeChild(overlay);
+    onBack();
+  };
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) { document.body.removeChild(overlay); onBack(); }
+  });
+
+  const dropZone = document.getElementById('import-drop-zone');
+  const fileInput = document.getElementById('import-file-input');
+
+  dropZone.onclick = () => fileInput.click();
+
+  dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.borderColor = '#4a90d9'; };
+  dropZone.ondragleave = () => { dropZone.style.borderColor = '#ccc'; };
+  dropZone.ondrop = (e) => { e.preventDefault(); dropZone.style.borderColor = '#ccc'; handleFile(e.dataTransfer.files[0]); };
+
+  fileInput.onchange = (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); };
+
+  async function handleFile(file) {
+    const statusDiv = document.getElementById('import-status');
+    const statusText = document.getElementById('import-status-text');
+    statusDiv.style.display = 'block';
+
+    const ext = file.name.split('.').pop().toLowerCase();
+
+    if (ext === 'json') {
+      statusText.textContent = '正在导入 JSON 模板...';
+      try {
+        const text = await file.text();
+        const tpl = JSON.parse(text);
+        if (!tpl.id || !tpl.columns) throw new Error('JSON 格式不正确：缺少 id 或 columns');
+
+        const { saveTemplate } = await import('./db.js?v=20260701f');
+        const record = await saveTemplate({ ...tpl, source: 'imported', isBuiltin: false });
+        refreshCustomTemplate(record.id, tpl);
+        clearTypeInfoCache();
+
+        document.body.removeChild(overlay);
+        showToast(`模板"${tpl.name}"导入成功`);
+        onBack();
+      } catch (e) {
+        statusText.textContent = '导入失败：' + (e.message || 'JSON 格式不正确');
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+      }
+    } else if (ext === 'docx') {
+      statusText.textContent = '正在解析 Word 模板...';
+      try {
+        const { parseDocxTemplate } = await import('./docx-parser.js');
+        const result = await parseDocxTemplate(file);
+        if (!result.success) {
+          statusText.textContent = result.error;
+          setTimeout(() => {
+            document.body.removeChild(overlay);
+            showManualBuilder({ onSave: async (tpl) => {
+              const { saveTemplate } = await import('./db.js?v=20260701f');
+              const record = await saveTemplate({ ...tpl, source: 'manual', isBuiltin: false });
+              refreshCustomTemplate(record.id, tpl);
+              clearTypeInfoCache();
+              showToast(`模板"${tpl.name}"创建成功`);
+              onBack();
+            }, onCancel: onBack });
+          }, 2000);
+          return;
+        }
+
+        document.body.removeChild(overlay);
+        showTemplateConfirm(result, { onBack });
+      } catch (e) {
+        statusText.textContent = '解析失败：' + (e.message || '未知错误');
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+      }
+    } else {
+      statusText.textContent = '不支持的文件格式，请上传 .json 或 .docx';
+      setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
+    }
+  }
+}
+
+// ---------- 模板识别确认页 ----------
+
+function showTemplateConfirm(parseResult, { onBack }) {
+  const { template, unknowns } = parseResult;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'tpl-confirm-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
+
+  const columnsHtml = template.columns.map((col, i) => {
+    const unknown = unknowns.find(u => u.index === i);
+    let statusIcon = '✅';
+    let statusColor = '#4caf50';
+    if (unknown) {
+      statusIcon = unknown.guessedType ? '⚠️' : '❓';
+      statusColor = unknown.guessedType ? '#ff9800' : '#f44336';
+    }
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #eee;">
+        <span style="font-size:16px;" title="${statusIcon === '✅' ? '已识别' : statusIcon === '⚠️' ? 'AI猜测' : '未识别'}">${statusIcon}</span>
+        <span style="flex:1;font-size:14px;">${escapeHtml(col.label)}</span>
+        <select class="tpl-col-type" data-index="${i}" style="font-size:13px;padding:4px;border-radius:6px;border:1px solid ${statusColor};">
+          <option value="number" ${col.type === 'number' ? 'selected' : ''}>序号</option>
+          <option value="description" ${col.type === 'description' ? 'selected' : ''}>问题描述</option>
+          <option value="image" ${col.type === 'image' ? 'selected' : ''}>照片</option>
+          <option value="remark" ${col.type === 'remark' ? 'selected' : ''}>备注</option>
+          <option value="text" ${col.type === 'text' ? 'selected' : ''}>普通文字</option>
+        </select>
+      </div>`;
+  }).join('');
+
+  overlay.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:85vh;overflow-y:auto;">
+      <h3 style="margin-bottom:4px;">🔍 模板识别结果</h3>
+      <p style="font-size:12px;color:#999;margin-bottom:12px;">
+        ✅已识别 | ⚠️AI猜测(可改) | ❓未识别(请手动选择)
+      </p>
+
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;color:#666;">模板名称</label>
+        <input type="text" id="tpl-name-input" value="${escapeHtml(template.name)}" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;color:#666;">所属行业</label>
+        <select id="tpl-industry-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;">
+          <option value="">请选择</option>
+          <option value="制造业">🏭 制造业</option>
+          <option value="化工">🧪 化工</option>
+          <option value="建筑">🏗️ 建筑</option>
+          <option value="仓储">📦 仓储</option>
+          <option value="餐饮">🍽️ 餐饮</option>
+          <option value="消防">🧯 消防</option>
+          <option value="电力">⚡ 电力</option>
+          <option value="通用">📄 通用</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom:4px;font-size:13px;color:#666;">表格列识别</div>
+      <div style="border:1px solid #eee;border-radius:8px;margin-bottom:16px;">
+        ${columnsHtml}
+      </div>
+
+      ${unknowns.length > 0 ? `
+        <button class="btn btn-purple btn-block" id="ai-guess-btn" style="margin-bottom:12px;">🤖 AI 智能识别未匹配列</button>
+      ` : ''}
+
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline btn-block" id="tpl-cancel-btn">取消</button>
+        <button class="btn btn-primary btn-block" id="tpl-save-btn">💾 保存模板</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  document.getElementById('tpl-cancel-btn').onclick = () => {
+    document.body.removeChild(overlay);
+    onBack();
+  };
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) { document.body.removeChild(overlay); onBack(); }
+  });
+
+  document.getElementById('tpl-save-btn').onclick = async () => {
+    template.name = document.getElementById('tpl-name-input').value.trim() || template.name;
+    template.industry = document.getElementById('tpl-industry-select').value;
+
+    const typeSelects = overlay.querySelectorAll('.tpl-col-type');
+    typeSelects.forEach(sel => {
+      const i = parseInt(sel.dataset.index);
+      template.columns[i].type = sel.value;
+      if (sel.value === 'number') template.columns[i].field = '_index';
+      else if (sel.value === 'description') template.columns[i].field = 'description';
+      else if (sel.value === 'remark') template.columns[i].field = '_remark';
+    });
+
+    const { saveTemplate } = await import('./db.js?v=20260701f');
+    const record = await saveTemplate({ ...template, source: 'docx-imported', isBuiltin: false });
+    refreshCustomTemplate(record.id, template);
+    clearTypeInfoCache();
+
+    document.body.removeChild(overlay);
+    showToast(`模板"${template.name}"导入成功`);
+    onBack();
+  };
+
+  // AI 识别按钮
+  const aiBtn = document.getElementById('ai-guess-btn');
+  if (aiBtn) {
+    aiBtn.onclick = async () => {
+      aiBtn.disabled = true;
+      aiBtn.textContent = 'AI 识别中...';
+      try {
+        const { aiGuessColumns } = await import('./docx-parser.js');
+        const guessed = await aiGuessColumns(unknowns);
+        document.body.removeChild(overlay);
+        showTemplateConfirm({ template, unknowns: guessed }, { onBack });
+      } catch (e) {
+        aiBtn.disabled = false;
+        aiBtn.textContent = '🤖 AI 智能识别未匹配列';
+        showToast('AI 识别失败，请检查网络');
+      }
+    };
+  }
+}
+
+// ---------- 手动建模板（降级方案）----------
+
+function showManualBuilder({ onSave, onCancel }) {
+  const overlay = document.createElement('div');
+  overlay.id = 'manual-builder-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
+      <h3 style="margin-bottom:12px;">🛠️ 手动创建模板</h3>
+      <p style="font-size:13px;color:#999;margin-bottom:12px;">Word 模板解析失败，请手动配置</p>
+
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;color:#666;">模板名称</label>
+        <input type="text" id="manual-name" value="自定义模板" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;color:#666;">列配置（5列推荐）</label>
+        <div id="manual-columns">
+          ${[0,1,2,3,4].map(i => `
+            <div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+              <input type="text" value="${escapeHtml(['序号','检查项目','检查情况','整改情况','备注'][i])}" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+              <select style="width:100px;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+                <option value="number" ${i===0?'selected':''}>序号</option>
+                <option value="description" ${i===1?'selected':''}>描述</option>
+                <option value="image" ${[2,3].includes(i)?'selected':''}>照片</option>
+                <option value="remark" ${i===4?'selected':''}>备注</option>
+                <option value="text">文字</option>
+              </select>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline btn-block" id="manual-cancel">取消</button>
+        <button class="btn btn-primary btn-block" id="manual-save">💾 创建</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  document.getElementById('manual-cancel').onclick = () => { document.body.removeChild(overlay); onCancel(); };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) { document.body.removeChild(overlay); onCancel(); } });
+
+  document.getElementById('manual-save').onclick = () => {
+    const name = document.getElementById('manual-name').value.trim() || '自定义模板';
+    const colDivs = document.getElementById('manual-columns').children;
+    const columns = [];
+    const FIELD_MAP = { number: '_index', description: 'description', remark: '_remark' };
+    let imgCount = 0;
+    for (const div of colDivs) {
+      const input = div.querySelector('input');
+      const select = div.querySelector('select');
+      if (!input.value.trim()) continue;
+      let field = FIELD_MAP[select.value] || 'field_' + columns.length;
+      if (select.value === 'image') {
+        field = imgCount === 0 ? 'beforePhoto' : 'afterPhoto';
+        imgCount++;
+      }
+      columns.push({ label: input.value.trim(), field, type: select.value, width: 1800 });
+    }
+
+    const tpl = {
+      id: 'tpl_' + Date.now(),
+      name, industry: '通用', description: '手动创建',
+      overviewType: 'generic',
+      page: { margins: { top: 1213, bottom: 1440, left: 1123, right: 1123 }, tableWidth: 9207 },
+      title: { font: '宋体', size: 36, bold: true, alignment: 'center', spacing: { before: 242, after: 0, line: 400 } },
+      overview: { font: '宋体', size: 24, alignment: 'justified', spacing: { before: 242, after: 120, line: 400 }, firstLineIndent: 560, leftIndent: 120 },
+      columns,
+      columnStyles: { header: { font: '宋体', size: 24, bold: true, background: 'D9E2F3' }, number: { font: '宋体', size: 28, alignment: 'center' }, text: { font: '宋体', size: 28, alignment: 'center' }, description: { font: '宋体', size: 22, alignment: 'left' }, remark: { font: '宋体', size: 20, alignment: 'center' }, image: { displayWidth: 192 } },
+      cellMargins: { top: 0, bottom: 0, left: 108, right: 108 },
+      rowHeight: { header: 90, data: 3400 },
+      hasSignatures: true, signatureText: '编制：               审核：                 批准：',
+      footer: { font: '宋体', size: 28, spacing: { after: 200 } },
+      aiPromptTag: '影响',
+      variables: { company: { label: '公司名称', default: '', editable: true }, department: { label: '部门', default: '', editable: true } },
+    };
+
+    document.body.removeChild(overlay);
+    onSave(tpl);
+  };
+}
+
 export {
   showToast, FIXED_COMPANY, FIXED_DEPARTMENT,
   renderHomePage,
@@ -1133,4 +1520,8 @@ export {
   showImageEditPanel,
   showMergePanel,
   renderGeneratePage,
+  showImportPanel,
+  showTemplateConfirm,
+  showManualBuilder,
+  clearTypeInfoCache,
 };

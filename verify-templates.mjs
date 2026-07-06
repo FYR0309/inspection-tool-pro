@@ -16,6 +16,7 @@ const { loadTemplate, generateDocx, pickWorkday, formatDate } = newModule;
 const safetyTpl = JSON.parse(readFileSync('./templates/safety.json', 'utf-8'));
 const s5sTpl = JSON.parse(readFileSync('./templates/5s.json', 'utf-8'));
 const companyTpl = JSON.parse(readFileSync('./templates/company.json', 'utf-8'));
+const universalTpl = JSON.parse(readFileSync('./templates/universal.json', 'utf-8'));
 
 // ---------- 4. 原版 TEMPLATE_CONFIG（从旧代码提取，用于对照） ----------
 const OLD_CONFIG = {
@@ -177,6 +178,20 @@ console.log('\n🔍 检查 overviewType');
 check('Safety overviewType', safetyTpl.overviewType, 'safety');
 check('5S overviewType', s5sTpl.overviewType, '5s');
 check('Company overviewType', companyTpl.overviewType, 'company');
+check('Universal overviewType', universalTpl.overviewType, 'generic');
+
+// ---------- 10. 测试 Universal 模板 ----------
+
+console.log('\n📋 测试通用模板 (universal)');
+loadTemplate(universalTpl);
+const uniResult = await generateDocx(
+  { company: '测试公司', department: '测试部门', date: '2026-07-06' },
+  [{ description: '测试问题', beforePhoto: 'x', afterPhoto: 'y' }]
+);
+check('Universal 报告生成成功', uniResult instanceof Blob, true);
+check('Universal 报告大小 > 0', uniResult.size > 0, true);
+check('Universal 列数', universalTpl.columns.length, 5);
+check('Universal 有签名行', universalTpl.hasSignatures, true);
 
 // ---------- 结果 ----------
 

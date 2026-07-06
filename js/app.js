@@ -2,7 +2,7 @@
 
 import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260701f';
 import { generateDocx, loadTemplate } from './docx-gen.js?v=20260701f';
-import { getTemplate } from '../templates/templates.js';
+import { getTemplate, loadCustomTemplates } from '../templates/templates.js';
 import { callDoubaoOptimize } from './ai.js?v=20260701f';
 import {
   showToast, FIXED_COMPANY, FIXED_DEPARTMENT,
@@ -453,8 +453,10 @@ function showGeneratePage() {
 
 // ---------- 启动 ----------
 
-function init() {
+async function init() {
   state.headerInfo.date = getTodayStr();
+  // 加载自定义模板（从 IndexedDB）
+  await loadCustomTemplates();
   showHome();
 }
 
