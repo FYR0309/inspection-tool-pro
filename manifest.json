@@ -1,0 +1,9 @@
+{
+  "name": "安全检查报告工具",
+  "short_name": "检查报告",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f5f5",
+  "theme_color": "#3b82f6",
+  "icons": []
+}

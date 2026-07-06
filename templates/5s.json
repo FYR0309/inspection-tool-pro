@@ -1,0 +1,73 @@
+{
+  "id": "5s",
+  "name": "5S现场检查通报",
+  "industry": "制造业",
+  "description": "5S现场管理半月检查通报，含签名行",
+  "overviewType": "5s",
+
+  "page": {
+    "margins": { "top": 1213, "bottom": 1440, "left": 1123, "right": 1123 },
+    "tableWidth": 9207
+  },
+
+  "title": {
+    "font": "Calibri",
+    "size": 36,
+    "bold": true,
+    "alignment": "center",
+    "spacing": { "before": 242, "after": 0, "line": 400 }
+  },
+
+  "overview": {
+    "font": "宋体",
+    "size": 24,
+    "alignment": "justified",
+    "spacing": { "before": 242, "after": 120, "line": 400 },
+    "firstLineIndent": 560,
+    "leftIndent": 120
+  },
+
+  "columns": [
+    { "label": "序号", "field": "_index", "type": "number", "width": 578 },
+    { "label": "存在问题", "field": "description", "type": "description", "width": 1560 },
+    { "label": "整改前图片", "field": "beforePhoto", "type": "image", "width": 2902 },
+    { "label": "整改后图片", "field": "afterPhoto", "type": "image", "width": 3093 },
+    { "label": "备注", "field": "_remark", "type": "remark", "width": 1074 }
+  ],
+
+  "columnStyles": {
+    "header": { "font": "宋体", "size": 24, "bold": true, "background": "D9E2F3" },
+    "number": { "font": "宋体", "size": 28, "alignment": "center" },
+    "text": { "font": "宋体", "size": 28, "alignment": "center" },
+    "description": { "font": "宋体", "size": 21, "alignment": "left" },
+    "remark": { "font": "宋体", "size": 20, "alignment": "center" },
+    "image": { "displayWidth": 192 }
+  },
+
+  "cellMargins": { "top": 0, "bottom": 0, "left": 108, "right": 108 },
+  "rowHeight": { "header": 90, "data": 3400 },
+
+  "hasSignatures": true,
+  "signatureText": "编制：               审核：                 批准：",
+
+  "footer": {
+    "font": "宋体",
+    "size": 28,
+    "spacing": { "after": 200 }
+  },
+
+  "aiPromptTag": "影响",
+
+  "variables": {
+    "company": {
+      "label": "公司名称",
+      "default": "广西糖业集团红河制糖有限公司",
+      "editable": false
+    },
+    "department": {
+      "label": "部门",
+      "default": "压榨车间",
+      "editable": false
+    }
+  }
+}

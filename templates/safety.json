@@ -1,0 +1,74 @@
+{
+  "id": "safety",
+  "name": "安全自查整改报告",
+  "industry": "制造业",
+  "description": "工厂车间安全自检自查，整改前后对比报告",
+  "overviewType": "safety",
+
+  "page": {
+    "margins": { "top": 800, "bottom": 1100, "left": 600, "right": 480 },
+    "tableWidth": 9971
+  },
+
+  "title": {
+    "font": "宋体",
+    "size": 44,
+    "bold": true,
+    "alignment": "center",
+    "spacing": { "before": 242, "after": 0, "line": 400 }
+  },
+
+  "overview": {
+    "font": "宋体",
+    "size": 30,
+    "alignment": "justified",
+    "spacing": { "before": 242, "after": 120, "line": 400 },
+    "firstLineIndent": 560,
+    "leftIndent": 120
+  },
+
+  "columns": [
+    { "label": "序号", "field": "_index", "type": "number", "width": 606 },
+    { "label": "部门", "field": "department", "type": "text", "width": 834 },
+    { "label": "问题描述", "field": "description", "type": "description", "width": 1960 },
+    { "label": "整改前图片", "field": "beforePhoto", "type": "image", "width": 2749 },
+    { "label": "整改后图片", "field": "afterPhoto", "type": "image", "width": 2800 },
+    { "label": "备注", "field": "_remark", "type": "remark", "width": 1022 }
+  ],
+
+  "columnStyles": {
+    "header": { "font": "宋体", "size": 28, "bold": true, "background": "D9E2F3" },
+    "number": { "font": "宋体", "size": 28, "alignment": "center" },
+    "text": { "font": "宋体", "size": 28, "alignment": "center" },
+    "description": { "font": "宋体", "size": 22, "alignment": "left" },
+    "remark": { "font": "宋体", "size": 20, "alignment": "center" },
+    "image": { "displayWidth": 192 }
+  },
+
+  "cellMargins": { "top": 0, "bottom": 0, "left": 0, "right": 0 },
+  "rowHeight": { "header": 90, "data": 3400 },
+
+  "hasSignatures": false,
+  "signatureText": "",
+
+  "footer": {
+    "font": "宋体",
+    "size": 30,
+    "spacing": { "after": 200 }
+  },
+
+  "aiPromptTag": "风险",
+
+  "variables": {
+    "company": {
+      "label": "公司名称",
+      "default": "广西糖业集团红河制糖有限公司",
+      "editable": false
+    },
+    "department": {
+      "label": "部门",
+      "default": "压榨车间",
+      "editable": false
+    }
+  }
+}

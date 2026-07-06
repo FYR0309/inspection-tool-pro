@@ -1,0 +1,465 @@
+// app.js — 应用主入口：全局状态、页面路由、事件协调
+
+import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260701f';
+import { generateDocx, loadTemplate } from './docx-gen.js?v=20260701f';
+import { getTemplate } from '../templates/templates.js';
+import { callDoubaoOptimize } from './ai.js?v=20260701f';
+import {
+  showToast, FIXED_COMPANY, FIXED_DEPARTMENT,
+  renderHomePage,
+  renderItemList,
+  renderItemForm,
+  renderOptimizePage,
+  showEditModal,
+  showMergePanel,
+  renderGeneratePage,
+} from './ui.js?v=20260701f';
+
+// ---------- 全局状态 ----------
+const state = {
+  reportType: null,
+  items: [],
+  currentDraftId: null,  // 当前编辑的草稿 ID
+  headerInfo: {
+    company: FIXED_COMPANY,
+    department: FIXED_DEPARTMENT,
+    date: getTodayStr(),           // 落款日期
+    inspectionDate: getTodayStr(), // 检查日期
+    halfMonth: null, // 'first' | 'second' — 仅 5S 使用
+  },
+  currentPage: 'home',
+};
+
+window._showToast = showToast;
+
+// ---------- 辅助：保存草稿（自动传入 currentDraftId 避免重复）----------
+
+function saveDraftWithId() {
+  if (!state.reportType || state.items.length === 0) return Promise.resolve();
+  return saveDraft(state.reportType, {
+    items: state.items,
+    headerInfo: state.headerInfo,
+  }, state.currentDraftId).then(newId => {
+    state.currentDraftId = newId;
+    return newId;
+  }).catch(e => { console.error('保存草稿失败:', e); });
+}
+
+// ---------- 导入处理 ----------
+
+async function handleImportDocx(file, reportType) {
+  showToast('正在解析文件...');
+
+  let parsed;
+  try {
+    const { parseDocx } = await import('./importer.js?v=20260701f');
+    parsed = await parseDocx(file);
+  } catch (e) {
+    showToast(e.message || '文件解析失败，请确认是工具生成的报告');
+    return;
+  }
+
+  const drafts = await listDrafts();
+
+  showMergePanel({
+    parsed,
+    drafts,
+    reportType,
+    onConfirm: async (targetDraftId) => {
+      state.reportType = reportType;
+
+      if (targetDraftId) {
+        const existing = await getDraft(targetDraftId);
+        if (existing) {
+          state.items = [...(existing.items || []), ...parsed.items];
+          state.headerInfo = existing.headerInfo || {
+            company: FIXED_COMPANY, department: FIXED_DEPARTMENT,
+            date: getTodayStr(), inspectionDate: getTodayStr(),
+            halfMonth: reportType === '5s' ? 'first' : null,
+          };
+          state.currentDraftId = targetDraftId;
+        }
+      } else {
+        state.items = parsed.items;
+        state.headerInfo = {
+          company: FIXED_COMPANY, department: FIXED_DEPARTMENT,
+          date: getTodayStr(), inspectionDate: getTodayStr(),
+          halfMonth: reportType === '5s' ? 'first' : null,
+        };
+        state.currentDraftId = null;
+      }
+
+      // 保存草稿（首次保存 currentDraftId 为 null 会新建；合并时传入已有 ID 会更新）
+      await saveDraftWithId();
+
+      showToast(`已导入 ${parsed.items.length} 条`);
+      showItemList();
+    },
+    onCancel: () => {},
+  });
+}
+
+async function handleImportPhoto(file, reportType) {
+  showToast('正在识别照片...');
+
+  let result;
+  try {
+    const { parsePhoto } = await import('./importer.js?v=20260701f');
+    result = await parsePhoto(file);
+  } catch (e) {
+    showToast('照片处理失败，请重试');
+    return;
+  }
+
+  const items = [{
+    description: result.description,
+    beforePhoto: result.photo,
+    afterPhoto: '',
+    status: '待整改',
+  }];
+
+  const drafts = await listDrafts();
+
+  showMergePanel({
+    parsed: { items },
+    drafts,
+    reportType,
+    onConfirm: async (targetDraftId) => {
+      state.reportType = reportType;
+
+      if (targetDraftId) {
+        const existing = await getDraft(targetDraftId);
+        if (existing) {
+          state.items = [...(existing.items || []), ...items];
+          state.headerInfo = existing.headerInfo || {
+            company: FIXED_COMPANY, department: FIXED_DEPARTMENT,
+            date: getTodayStr(), inspectionDate: getTodayStr(),
+            halfMonth: reportType === '5s' ? 'first' : null,
+          };
+          state.currentDraftId = targetDraftId;
+        }
+      } else {
+        state.items = items;
+        state.headerInfo = {
+          company: FIXED_COMPANY, department: FIXED_DEPARTMENT,
+          date: getTodayStr(), inspectionDate: getTodayStr(),
+          halfMonth: reportType === '5s' ? 'first' : null,
+        };
+        state.currentDraftId = null;
+      }
+
+      await saveDraftWithId();
+
+      const descPreview = result.description.length > 20
+        ? result.description.substring(0, 20) + '...'
+        : result.description;
+      showToast(`已导入照片：${descPreview}`);
+      showItemList();
+    },
+    onCancel: () => {},
+  });
+}
+
+// ---------- 首页 ----------
+
+function showHome() {
+  // v1 → v2 迁移（首次运行时执行）
+  migrateFromV1().then(() => {
+    listDrafts().then(drafts => {
+      renderHomePage({ drafts, onSelectType: handleTypeSelection });
+      // 检测数据丢失：数据库空了但备份显示之前有数据
+      checkDataLoss(drafts);
+    });
+  }).catch(() => {
+    listDrafts().then(drafts => {
+      renderHomePage({ drafts, onSelectType: handleTypeSelection });
+      checkDataLoss(drafts);
+    });
+  });
+}
+
+function checkDataLoss(drafts) {
+  if (drafts.length > 0) return; // 有草稿，正常
+  const backup = getBackupInfo();
+  if (!backup || backup.drafts.length === 0) return; // 从来没有过草稿，正常
+  // 数据库空了但之前有草稿 → 可能被浏览器清空了
+  const daysAgo = Math.floor((Date.now() - backup.time) / 86400000);
+  showToast(`⚠️ 草稿数据丢失（${daysAgo}天前有${backup.drafts.length}条备份）`, 6000);
+}
+
+function handleTypeSelection(type, resume, draftId, file, importReportType) {
+  // 处理导入 .docx（用户已通过卡片 📥 按钮指定了报告类型）
+  if (type === '__import_docx__' && file) {
+    handleImportDocx(file, importReportType);
+    return;
+  }
+  // 处理导入照片（用户已通过卡片 📥 按钮指定了报告类型）
+  if (type === '__import_photo__' && file) {
+    handleImportPhoto(file, importReportType);
+    return;
+  }
+
+  state.reportType = type;
+
+  const defaults = {
+    company: FIXED_COMPANY,
+    department: FIXED_DEPARTMENT,
+    date: getTodayStr(),
+    inspectionDate: getTodayStr(),
+    halfMonth: type === '5s' ? 'first' : null,
+  };
+
+  if (resume && draftId) {
+    getDraft(draftId).then(draftData => {
+      if (draftData) {
+        state.items = draftData.items || [];
+        state.headerInfo = { ...defaults, ...draftData.headerInfo };
+        state.currentDraftId = draftId;
+      }
+      showItemList();
+    });
+  } else {
+    state.items = [];
+    state.headerInfo = defaults;
+    state.currentDraftId = null;
+    showItemList();
+  }
+}
+
+// ---------- 条目列表 ----------
+
+function showItemList() {
+  renderItemList({
+    reportType: state.reportType,
+    items: state.items,
+    headerInfo: state.headerInfo,
+    onAdd: () => showItemForm(),
+    onEdit: (index) => showItemForm(index),
+    onDelete: (index) => {
+      const deletedItem = state.items[index];
+      state.items.splice(index, 1);
+      saveDraftWithId();
+      showItemList();
+
+      showToast('条目已删除', 5000, {
+        label: '撤回',
+        onUndo: () => {
+          state.items.splice(index, 0, deletedItem);
+          saveDraftWithId();
+          showItemList();
+        },
+      });
+    },
+    onGenerate: () => {
+      if (state.items.length === 0) {
+        showToast('请至少添加一条问题记录');
+        return;
+      }
+      showGeneratePage();
+    },
+    onBack: () => {
+      saveDraftWithId().then(() => showHome());
+    },
+  });
+}
+
+// ---------- 新增/编辑条目 ----------
+
+function showItemForm(editIndex, photoOverride) {
+  const item = editIndex !== undefined ? state.items[editIndex] : null;
+
+  renderItemForm({
+    item,
+    index: editIndex,
+    reportType: state.reportType,
+    photoOverride,
+    onSave: (savedItem, idx) => {
+      if (idx !== undefined) {
+        state.items[idx] = savedItem;
+      } else {
+        state.items.push(savedItem);
+      }
+      saveDraftWithId().then(() => showItemList());
+    },
+    onCancel: () => showItemList(),
+    onOptimize: (text) => showOptimizePage(text, editIndex),
+  });
+}
+
+// ---------- AI 润色 ----------
+
+async function showOptimizePage(text, editIndex) {
+  // 暂存当前表单照片，防止返回时丢失
+  const photoOverride = {
+    beforePhoto: window._formBeforePhoto,
+    afterPhoto: window._formAfterPhoto,
+  };
+
+  // 创建 AbortController，用于取消请求
+  const abortController = new AbortController();
+  let cancelled = false;
+
+  // 加载态
+  renderOptimizePage({
+    text,
+    reportType: state.reportType,
+    options: [],
+    loading: true,
+    onSelect: () => {}, onEdit: () => {}, onRetry: () => {},
+    onUseOriginal: () => {}, onBack: () => {},
+    onCancel: () => {
+      cancelled = true;
+      abortController.abort();
+      showItemForm(editIndex, photoOverride);
+    },
+  });
+
+  try {
+    const options = await callDoubaoOptimize(text, state.reportType, abortController.signal);
+
+    if (cancelled) return; // 已取消，不渲染结果
+
+    renderOptimizePage({
+      text,
+      reportType: state.reportType,
+      options,
+      loading: false,
+      onSelect: (selectedText) => {
+        window._optimizedText = selectedText;
+        showItemForm(editIndex, photoOverride);
+        setTimeout(() => {
+          const descEl = document.getElementById('item-desc');
+          if (descEl && window._optimizedText) {
+            descEl.value = window._optimizedText;
+            descEl.dispatchEvent(new Event('input'));
+            delete window._optimizedText;
+          }
+        }, 100);
+      },
+      onEdit: (selectedText) => {
+        showEditModal(selectedText, (editedText) => {
+          window._optimizedText = editedText;
+          showItemForm(editIndex, photoOverride);
+          setTimeout(() => {
+            const descEl = document.getElementById('item-desc');
+            if (descEl && window._optimizedText) {
+              descEl.value = window._optimizedText;
+              delete window._optimizedText;
+            }
+          }, 100);
+        });
+      },
+      onRetry: () => showOptimizePage(text, editIndex),
+      onUseOriginal: (originalText) => {
+        // 直接用原文，等同选择了原文
+        window._optimizedText = originalText;
+        showItemForm(editIndex, photoOverride);
+        setTimeout(() => {
+          const descEl = document.getElementById('item-desc');
+          if (descEl && window._optimizedText) {
+            descEl.value = window._optimizedText;
+            descEl.dispatchEvent(new Event('input'));
+            delete window._optimizedText;
+          }
+        }, 100);
+      },
+      onCancel: () => {
+        cancelled = true;
+        abortController.abort();
+        showItemForm(editIndex, photoOverride);
+      },
+      onBack: () => showItemForm(editIndex, photoOverride),
+    });
+  } catch (e) {
+    if (e.name === 'AbortError' || cancelled) {
+      // 用户主动取消，静默返回
+      return;
+    }
+    showToast('网络异常，请检查网络后重试');
+    showItemForm(editIndex, photoOverride);
+  }
+}
+
+// ---------- 生成报告 ----------
+
+function showGeneratePage() {
+  renderGeneratePage({
+    reportType: state.reportType,
+    headerInfo: state.headerInfo,
+    items: state.items,
+    onConfirm: async (action) => {
+      showToast('正在生成报告...');
+
+      try {
+        // 加载模板 → 生成报告
+        const template = getTemplate(state.reportType);
+        loadTemplate(template);
+        const blob = await generateDocx(state.headerInfo, state.items);
+        const fileName = `${template.name}_${state.headerInfo.date}.docx`;
+
+        // 先下载到手机
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        if (action === 'share') {
+          // 微信内置浏览器不支持文件分享，先下载再提示
+          if (navigator.share && navigator.canShare && navigator.canShare({ url: window.location.href })) {
+            try {
+              await navigator.share({
+                title: '整改报告',
+                text: `${labels[state.reportType]}已生成，文件已保存到手机。`,
+                url: window.location.href,
+              });
+            } catch (e) {
+              // 用户取消，不提示错误
+            }
+          }
+          showToast('报告已保存到下载，请从微信中发送文件');
+        } else {
+          showToast('报告已下载');
+        }
+
+        // 生成后保留草稿，不清除历史
+        state.items = [];
+
+        setTimeout(() => showHome(), 500);
+
+      } catch (e) {
+        console.error('生成报告失败:', e);
+        showToast('生成报告失败，请重试');
+      }
+    },
+    onBack: () => showItemList(),
+    onEditDate: (newDate) => {
+      state.headerInfo.date = newDate;
+      showGeneratePage();
+    },
+    onEditInspectionDate: (newDate) => {
+      state.headerInfo.inspectionDate = newDate;
+      showGeneratePage();
+    },
+    onToggleHalfMonth: (half) => {
+      state.headerInfo.halfMonth = half;
+      showGeneratePage();
+    },
+  });
+}
+
+// ---------- 启动 ----------
+
+function init() {
+  state.headerInfo.date = getTodayStr();
+  showHome();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', init);
+} else {
+  init();
+}
