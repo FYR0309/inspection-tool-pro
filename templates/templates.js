@@ -62,13 +62,16 @@ function listTemplates() {
     description: t.description,
     isBuiltin: true,
   }));
-  const custom = Object.values(customTemplates).map(t => ({
-    id: t.id,
-    name: t.name,
-    industry: t.industry || '通用',
-    description: t.description || '',
-    isBuiltin: false,
-  }));
+  // 过滤掉非模板记录（如 _original_docx_ 存储）
+  const custom = Object.values(customTemplates)
+    .filter(t => t && t.id && t.columns)
+    .map(t => ({
+      id: t.id,
+      name: t.name,
+      industry: t.industry || '通用',
+      description: t.description || '',
+      isBuiltin: false,
+    }));
   return [...builtin, ...custom];
 }
 

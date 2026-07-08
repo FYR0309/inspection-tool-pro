@@ -341,6 +341,12 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       input.onchange = (ev) => {
         const file = ev.target.files[0];
         if (!file) return;
+        // 导入报告编辑：限制 30MB（含照片的docx可能较大）
+        const MAX_FILE = 30 * 1024 * 1024;
+        if (file.size > MAX_FILE) {
+          showToast(`文件过大（${(file.size / 1024 / 1024).toFixed(0)}MB），请压缩后重试`);
+          return;
+        }
         if (file.name.endsWith('.docx')) {
           onSelectType('__import_docx__', false, null, file, reportType);
         } else if (file.type.startsWith('image/')) {
@@ -1425,6 +1431,13 @@ function showImportPanel({ onSelectType, onBack }) {
         setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
       }
     } else if (ext === 'docx') {
+      // 文件大小检查：超过 10MB 拒绝（浏览器内存限制）
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      if (file.size > MAX_FILE_SIZE) {
+        statusText.textContent = `文件过大（${(file.size / 1024 / 1024).toFixed(1)}MB），请压缩图片后重新上传（建议≤10MB）`;
+        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
+        return;
+      }
       statusText.textContent = '正在解析 Word 模板...';
       try {
         const { parseDocxTemplate } = await import('./docx-parser.js');

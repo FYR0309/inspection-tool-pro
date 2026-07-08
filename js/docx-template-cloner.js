@@ -123,12 +123,12 @@ async function cloneTemplateDocx(originalBuffer, items, templateConfig) {
   // 4. 构建新的数据行 XML
   const newRowsXml = buildDataRows(items, templateRow, templateConfig, imageInfos);
 
-  // 5. 替换文档中的表格内容（保留签名行）
+  // 5. 替换文档中的表格内容（保留签名行，正确闭合表格）
   const beforeTable = docXml.substring(0, tableStart);
   const afterTable = docXml.substring(tableEnd);
   const headerSection = docXml.substring(tableStart, headerRowEnd);
   const signatureXml = (signatureRows && signatureRows.length > 0) ? signatureRows.join('') : '';
-  docXml = beforeTable + headerSection + newRowsXml + signatureXml + afterTable;
+  docXml = beforeTable + headerSection + newRowsXml + signatureXml + '</w:tbl>' + afterTable;
 
   // 6. 更新关系文件（新增图片引用）
   await updateRelations(zip, imageInfos);
