@@ -6,9 +6,15 @@ import { getTemplate, listTemplates, refreshCustomTemplate, removeCustomTemplate
 
 const pageContainer = document.getElementById('page-container');
 
-// ---------- 固定信息 ----------
-const FIXED_COMPANY = '广西糖业集团红河制糖有限公司';
-const FIXED_DEPARTMENT = '压榨车间';
+// ---------- 预设信息（从 localStorage 读取，首次为空） ----------
+
+function getPresetCompany() {
+  try { return getPresets().company || ''; } catch (e) { return ''; }
+}
+
+function getPresetDepartment() {
+  try { return getPresets().department || ''; } catch (e) { return ''; }
+}
 
 // ---------- 模板信息辅助 ----------
 
@@ -195,8 +201,9 @@ function renderHomePage({ presets, drafts, onSelectType }) {
       <h2 style="font-size:22px;margin-bottom:4px;">安全检查报告</h2>
       <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">选择检查类型开始</p>
 
-      <div class="presets-bar">
-        🏢 ${escapeHtml(FIXED_COMPANY)} · 👤 ${escapeHtml(FIXED_DEPARTMENT)} · 📅 ${today}
+      <div class="presets-bar" id="presets-bar" style="cursor:pointer;" title="点击编辑公司/部门信息">
+        🏢 ${escapeHtml(getPresetCompany() || '点击设置公司')} · 👤 ${escapeHtml(getPresetDepartment() || '点击设置部门')} · 📅 ${today}
+        <span style="font-size:11px;margin-left:4px;">✏️</span>
       </div>
 
       ${builtinCards.length > 0 ? `
@@ -223,6 +230,7 @@ function renderHomePage({ presets, drafts, onSelectType }) {
               <div class="card-desc">${c.description}</div>
             </div>
             <button class="type-import-btn" data-action="import-file-type" data-type="${c.id}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入文件到此类型">📥</button>
+            <button data-action="edit-template" data-id="${c.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:6px;flex-shrink:0;" title="编辑模板">✏️</button>
             <button data-action="export-template" data-id="${c.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:6px;flex-shrink:0;" title="导出模板">📤</button>
             <button data-action="delete-template" data-id="${c.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:6px;flex-shrink:0;" title="删除模板">🗑️</button>
           </div>
@@ -302,6 +310,18 @@ function renderHomePage({ presets, drafts, onSelectType }) {
       onSelectType(card.dataset.type, true, card.dataset.id);
     }
 
+    // 模板编辑
+    if (action === 'edit-template') {
+      e.stopPropagation();
+      const tplId = card.dataset.id;
+      showTemplateEditor({ templateId: tplId, onBack: () => {
+        import('./db.js?v=20260701f').then(({ listDrafts }) => {
+          listDrafts().then(newDrafts => renderHomePage({ drafts: newDrafts, onSelectType }));
+        });
+      }});
+      return;
+    }
+
     // 模板导出
     if (action === 'export-template') {
       e.stopPropagation();
@@ -320,6 +340,10 @@ function renderHomePage({ presets, drafts, onSelectType }) {
       const tplId = card.dataset.id;
       import('./db.js?v=20260701f').then(({ deleteTemplate }) => {
         deleteTemplate(tplId).then(() => {
+          // 同步删除原始 .docx 存储
+          import('./docx-template-cloner.js').then(({ deleteOriginalTemplate }) => {
+            deleteOriginalTemplate(tplId);
+          }).catch(() => {});
           removeCustomTemplate(tplId);
           clearTypeInfoCache();
           import('./db.js?v=20260701f').then(({ listDrafts }) => {
@@ -333,6 +357,16 @@ function renderHomePage({ presets, drafts, onSelectType }) {
       return;
     }
   });
+  // 设置栏点击 → 弹出设置面板
+  const presetsBar = document.getElementById('presets-bar');
+  if (presetsBar) {
+    presetsBar.onclick = () => showSettingsPanel({ onSave: () => {
+      import('./db.js?v=20260701f').then(({ listDrafts }) => {
+        listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
+      });
+    }});
+  }
+
   // 导入模板按钮（延迟绑定，因为按钮在 innerHTML 中）
   setTimeout(() => {
     const importBtn = document.getElementById('import-template-btn');
@@ -397,6 +431,7 @@ function renderItemList({ reportType, items, headerInfo, onAdd, onEdit, onDelete
 
     <div class="bottom-bar">
       <button class="btn btn-primary btn-block" id="add-item-btn" style="font-size:18px;">+ 新增问题项</button>
+      <button class="btn btn-outline" id="checklist-btn" style="flex-shrink:0;" title="检查清单">📋</button>
       ${items.length > 0 ? `
         <button class="btn btn-success" id="generate-btn" style="flex-shrink:0;">📄 生成报告</button>
       ` : ''}
@@ -405,6 +440,13 @@ function renderItemList({ reportType, items, headerInfo, onAdd, onEdit, onDelete
 
   document.getElementById('list-back').onclick = onBack;
   document.getElementById('add-item-btn').onclick = onAdd;
+  document.getElementById('checklist-btn').onclick = () => showChecklistPanel({ items, reportType, onLoad: (loadedItems) => {
+    // 加载检查清单项——返回带描述的对象，由上层批量添加
+    if (onAdd) {
+      loadedItems.forEach(li => onAdd(li));
+      showToast(`已加载${loadedItems.length}项`);
+    }
+  }});
   if (items.length > 0) {
     document.getElementById('generate-btn').onclick = onGenerate;
   }
@@ -993,7 +1035,7 @@ function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, 
     halfMonthPreviewHtml = `
       <div style="margin-top:10px;background:#fdf7f0;border-radius:8px;padding:10px;">
         <div style="font-size:11px;color:var(--primary);margin-bottom:4px;">📝 标题预览：</div>
-        <div style="font-size:13px;font-weight:600;">${d.getFullYear()}年${d.getMonth()+1}月${FIXED_DEPARTMENT}5S现场检查通报（${halfLabel}）</div>
+        <div style="font-size:13px;font-weight:600;">${d.getFullYear()}年${d.getMonth()+1}月${getPresetDepartment() || '部门'}5S现场检查通报（${halfLabel}）</div>
         <div style="margin-top:8px;">
           <button class="btn btn-sm ${h.halfMonth === 'first' ? 'btn-primary' : 'btn-outline'}" id="hm-first" style="margin-right:8px;">📅 上半月</button>
           <button class="btn btn-sm ${h.halfMonth === 'second' ? 'btn-primary' : 'btn-outline'}" id="hm-second">📅 下半月</button>
@@ -1013,8 +1055,8 @@ function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, 
         <div class="card" style="cursor:default;">
           <div style="font-weight:600;margin-bottom:8px;">📄 ${typeName}</div>
           <div style="font-size:13px;line-height:2;color:var(--text-secondary);">
-            公司：${escapeHtml(FIXED_COMPANY)}<br>
-            部门：${escapeHtml(FIXED_DEPARTMENT)}<br>
+            公司：${escapeHtml(getPresetCompany() || '(未设置)')}<br>
+            部门：${escapeHtml(getPresetDepartment() || '(未设置)')}<br>
             问题数：${items.length} · 已整改：${doneCount}
           </div>
           <div style="margin-top:10px;">
@@ -1285,6 +1327,14 @@ function showImportPanel({ onSelectType, onBack }) {
           return;
         }
 
+        // 存储原始 .docx 文件（用于方案B克隆引擎）
+        try {
+          const { storeOriginalTemplate } = await import('./docx-template-cloner.js');
+          await storeOriginalTemplate(result.template.id, file);
+        } catch (e) {
+          console.warn('存储原始模板失败，将使用再生模式:', e);
+        }
+
         document.body.removeChild(overlay);
         showTemplateConfirm(result, { onBack });
       } catch (e) {
@@ -1510,8 +1560,327 @@ function showManualBuilder({ onSave, onCancel }) {
   };
 }
 
+// ---------- 模板编辑器 ----------
+
+function showTemplateEditor({ templateId, onBack }) {
+  const tpl = getTemplate(templateId);
+  if (!tpl) { showToast('模板未找到'); onBack(); return; }
+  const isBuiltin = isBuiltinTemplate(templateId);
+
+  // 构建预览数据
+  const previewData = buildPreviewData(tpl);
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:20px;max-height:90vh;overflow-y:auto;">
+      <h3 style="margin-bottom:4px;">✏️ 编辑模板：${escapeHtml(tpl.name)}</h3>
+      ${isBuiltin ? '<p style="font-size:12px;color:#c4553d;margin-bottom:8px;">⚠️ 内置模板，编辑后将保存为我的模板</p>' : ''}
+
+      <div style="margin-bottom:14px;">
+        <label style="font-size:13px;color:#666;">📝 报告标题模板</label>
+        <textarea id="tpl-edit-title" rows="1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;font-size:14px;">${escapeHtml(tpl.titleTemplate || '')}</textarea>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="font-size:13px;color:#666;">📋 概述文字模板</label>
+        <textarea id="tpl-edit-overview" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;font-size:13px;">${escapeHtml(tpl.overviewTemplate || '')}</textarea>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <label style="font-size:13px;color:#666;">🏢 落款行（每行一个）</label>
+        <textarea id="tpl-edit-footer" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;font-size:13px;">${escapeHtml((tpl.footerTemplate && tpl.footerTemplate.lines) ? tpl.footerTemplate.lines.join('\n') : '{{company}}\n    {{department}}\n{{date}}')}</textarea>
+      </div>
+
+      <div style="margin-bottom:4px;font-size:11px;color:#999;">可用占位符：<code>{{company}}</code> <code>{{department}}</code> <code>{{date}}</code> <code>{{total}}</code> <code>{{done}}</code> <code>{{remain}}</code> <code>{{year}}</code> <code>{{month}}</code></div>
+
+      <div style="margin-bottom:16px;">
+        <label style="font-size:13px;color:#666;margin-bottom:4px;display:block;">📄 效果预览</label>
+        <div id="tpl-preview-area" style="border:2px solid #eee;border-radius:8px;padding:12px;background:#fafaf7;max-height:300px;overflow-y:auto;font-size:12px;">
+          ${renderTemplatePreview(tpl, previewData)}
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline btn-block" id="tpl-edit-cancel">取消</button>
+        <button class="btn btn-primary btn-block" id="tpl-edit-save">💾 ${isBuiltin ? '保存为我的模板' : '保存修改'}</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  // 实时预览
+  const titleInput = overlay.querySelector('#tpl-edit-title');
+  const overviewInput = overlay.querySelector('#tpl-edit-overview');
+  const footerInput = overlay.querySelector('#tpl-edit-footer');
+  const previewArea = overlay.querySelector('#tpl-preview-area');
+
+  function updatePreview() {
+    const tempTpl = JSON.parse(JSON.stringify(tpl));
+    tempTpl.titleTemplate = titleInput.value;
+    tempTpl.overviewTemplate = overviewInput.value;
+    tempTpl.footerTemplate = { lines: footerInput.value.split('\n').filter(l => l || l === '') };
+    previewArea.innerHTML = renderTemplatePreview(tempTpl, previewData);
+  }
+
+  titleInput.addEventListener('input', updatePreview);
+  overviewInput.addEventListener('input', updatePreview);
+  footerInput.addEventListener('input', updatePreview);
+
+  overlay.querySelector('#tpl-edit-cancel').onclick = () => { document.body.removeChild(overlay); onBack(); };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) { document.body.removeChild(overlay); onBack(); } });
+
+  overlay.querySelector('#tpl-edit-save').onclick = async () => {
+    const newTpl = JSON.parse(JSON.stringify(tpl));
+    newTpl.titleTemplate = titleInput.value.trim();
+    newTpl.overviewTemplate = overviewInput.value.trim();
+    newTpl.footerTemplate = { lines: footerInput.value.split('\n') };
+    newTpl.name = isBuiltin ? tpl.name + '（自定义）' : tpl.name;
+    newTpl.id = isBuiltin ? 'tpl_' + Date.now() : tpl.id;
+    newTpl.isBuiltin = false;
+    newTpl.source = 'customized';
+    newTpl.version = 1;
+
+    const { saveTemplate } = await import('./db.js?v=20260701f');
+    const record = await saveTemplate({ ...newTpl });
+    refreshCustomTemplate(record.id, newTpl);
+    clearTypeInfoCache();
+    document.body.removeChild(overlay);
+    showToast(`模板"${newTpl.name}"已保存`);
+    onBack();
+  };
+}
+
+/** 构建预览用占位数据 */
+function buildPreviewData(tpl) {
+  return {
+    company: 'XX公司',
+    department: 'XX车间',
+    date: '2026年7月8日',
+    year: '2026',
+    month: '7',
+    total: '5',
+    done: '3',
+    remain: '2',
+    half: '上半月',
+    checkDate1: '2026年7月3日',
+    checkDate2: '2026年7月6日',
+  };
+}
+
+/** 渲染模板预览 HTML */
+function renderTemplatePreview(tpl, data) {
+  const titleText = replacePreview(tpl.titleTemplate || '', data);
+  const overviewText = replacePreview(tpl.overviewTemplate || '', data);
+  const footerLines = (tpl.footerTemplate && tpl.footerTemplate.lines)
+    ? tpl.footerTemplate.lines.map(l => replacePreview(l, data))
+    : [data.company, '    ' + data.department, data.date];
+
+  const columns = tpl.columns || [];
+  const headerCells = columns.map(c =>
+    `<th style="border:1px solid #ccc;padding:6px 8px;background:#D9E2F3;font-weight:bold;font-size:13px;">${escapeHtml(c.label)}</th>`
+  ).join('');
+
+  // 模拟数据行
+  const sampleRows = [
+    { desc: '灭火器压力不足', before: '📷', after: '📷' },
+    { desc: '电线裸露有触电风险', before: '📷', after: '' },
+  ];
+  const dataRows = sampleRows.map((row, i) => {
+    const cells = columns.map((col, ci) => {
+      if (col.type === 'number') return `<td style="border:1px solid #eee;padding:4px 8px;text-align:center;">${i + 1}</td>`;
+      if (col.type === 'image') return `<td style="border:1px solid #eee;padding:4px 8px;text-align:center;font-size:16px;">${ci === columns.findIndex(c => c.type === 'image') ? row.before : row.after}</td>`;
+      if (col.type === 'description') return `<td style="border:1px solid #eee;padding:4px 8px;text-align:left;">${row.desc}</td>`;
+      if (col.type === 'remark') return `<td style="border:1px solid #eee;padding:4px 8px;text-align:center;">${row.after ? '已整改' : ''}</td>`;
+      return `<td style="border:1px solid #eee;padding:4px 8px;text-align:center;"></td>`;
+    });
+    return `<tr>${cells.join('')}</tr>`;
+  }).join('');
+
+  return `
+    <div style="margin-bottom:12px;">
+      <div style="text-align:center;font-weight:bold;font-size:16px;margin-bottom:6px;">${escapeHtml(titleText)}</div>
+      <div style="font-size:12px;line-height:1.6;text-indent:2em;margin-bottom:10px;">${escapeHtml(overviewText)}</div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;margin-bottom:12px;font-size:12px;">
+      <thead><tr>${headerCells}</tr></thead>
+      <tbody>${dataRows}</tbody>
+    </table>
+    <div style="text-align:right;font-size:13px;line-height:1.8;">
+      ${footerLines.map(l => `<div>${escapeHtml(l)}</div>`).join('')}
+    </div>
+    ${tpl.hasSignatures && tpl.signatureText ? `<div style="margin-top:8px;font-size:12px;">${escapeHtml(tpl.signatureText)}</div>` : ''}
+  `;
+}
+
+function replacePreview(template, vars) {
+  let result = template;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(value ?? ''));
+  }
+  return result;
+}
+
+// ---------- 检查清单面板 ----------
+
+async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
+  const checklists = await (await import('./db.js?v=20260701f')).listChecklists().catch(() => []);
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
+      <h3 style="margin-bottom:12px;">📋 检查清单</h3>
+      <p style="font-size:13px;color:#999;margin-bottom:12px;">常用检查项模板，快速复用，不用每次重新输入</p>
+
+      ${items.length > 0 ? `
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px;color:#666;">💾 保存当前 ${items.length} 项为清单</label>
+          <div style="display:flex;gap:8px;margin-top:4px;">
+            <input type="text" id="cl-name-input" placeholder="清单名称（如：周例行检查）" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+            <button class="btn btn-primary btn-sm" id="cl-save-btn" style="flex-shrink:0;">保存</button>
+          </div>
+        </div>
+      ` : ''}
+
+      <div>
+        <label style="font-size:13px;color:#666;">📥 已保存的清单</label>
+        ${checklists.length === 0 ? '<p style="color:#999;font-size:13px;margin-top:4px;">暂无清单</p>' : ''}
+        ${checklists.map(cl => `
+          <div style="display:flex;align-items:center;gap:8px;padding:10px;border:1px solid #eee;border-radius:8px;margin-top:6px;">
+            <div style="flex:1;min-width:0;" data-action="load-checklist" data-id="${cl.id}">
+              <div style="font-weight:600;font-size:14px;">📋 ${escapeHtml(cl.name)}</div>
+              <div style="font-size:12px;color:#999;">${cl.items.length} 项 · ${new Date(cl.updatedAt).toLocaleDateString('zh-CN')}</div>
+            </div>
+            <button data-action="del-checklist" data-id="${cl.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;">🗑️</button>
+          </div>
+        `).join('')}
+      </div>
+
+      <button class="btn btn-outline btn-block" id="cl-close-btn" style="margin-top:12px;">关闭</button>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#cl-close-btn').onclick = () => { document.body.removeChild(overlay); };
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) { document.body.removeChild(overlay); } });
+
+  // 保存清单
+  const saveBtn = overlay.querySelector('#cl-save-btn');
+  if (saveBtn) {
+    saveBtn.onclick = async () => {
+      const name = overlay.querySelector('#cl-name-input').value.trim();
+      if (!name) { showToast('请输入清单名称'); return; }
+      const descItems = items.filter(i => i.description).map(i => ({ description: i.description }));
+      if (descItems.length === 0) { showToast('没有可保存的描述项'); return; }
+      await (await import('./db.js?v=20260701f')).saveChecklist(name, descItems);
+      document.body.removeChild(overlay);
+      showToast(`清单"${name}"已保存`);
+    };
+  }
+
+  // 加载/删除清单
+  overlay.querySelectorAll('[data-action="load-checklist"]').forEach(el => {
+    el.style.cursor = 'pointer';
+    el.onclick = async () => {
+      const cl = checklists.find(c => c.id === el.dataset.id);
+      if (cl && cl.items) {
+        document.body.removeChild(overlay);
+        onLoad(cl.items);
+      }
+    };
+  });
+
+  overlay.querySelectorAll('[data-action="del-checklist"]').forEach(el => {
+    el.onclick = async (e) => {
+      e.stopPropagation();
+      await (await import('./db.js?v=20260701f')).deleteChecklist(el.dataset.id);
+      document.body.removeChild(overlay);
+      showToast('清单已删除');
+    };
+  });
+}
+
+// ---------- 设置面板 ----------
+
+function showSettingsPanel({ onSave }) {
+  const presets = getPresets();
+  const depts = presets.departments || [];
+
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
+      <h3 style="margin-bottom:12px;">⚙️ 设置</h3>
+
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;color:#666;">🏢 公司名称（落款显示）</label>
+        <input type="text" id="settings-company" value="${escapeHtml(presets.company || '')}" placeholder="如：XX公司" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;">
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;color:#666;">👤 默认部门/车间</label>
+        <input type="text" id="settings-department" value="${escapeHtml(presets.department || '')}" placeholder="如：压榨车间" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;">
+      </div>
+
+      <div style="margin-bottom:16px;">
+        <label style="font-size:13px;color:#666;">📋 我的部门列表（快捷切换）</label>
+        <div id="dept-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;margin-bottom:8px;">
+          ${depts.map(d => `<span class="dept-tag" style="background:#f0ebe0;padding:4px 10px;border-radius:12px;font-size:13px;cursor:pointer;" data-dept="${escapeHtml(d)}">${escapeHtml(d)} ✕</span>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="new-dept-input" placeholder="新增部门名称" style="flex:1;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
+          <button class="btn btn-sm btn-outline" id="add-dept-btn" style="flex-shrink:0;">+ 添加</button>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="settings-save-btn">💾 保存</button>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) { document.body.removeChild(overlay); }
+  });
+
+  // 部门标签点击 → 删除
+  overlay.querySelector('#dept-list').addEventListener('click', (e) => {
+    const tag = e.target.closest('.dept-tag');
+    if (!tag) return;
+    const deptName = tag.dataset.dept;
+    const idx = depts.indexOf(deptName);
+    if (idx !== -1) depts.splice(idx, 1);
+    tag.remove();
+  });
+
+  // 添加新部门
+  overlay.querySelector('#add-dept-btn').onclick = () => {
+    const input = overlay.querySelector('#new-dept-input');
+    const name = input.value.trim();
+    if (!name) return;
+    if (depts.includes(name)) { showToast('部门已存在'); return; }
+    depts.push(name);
+    const tag = document.createElement('span');
+    tag.className = 'dept-tag';
+    tag.style.cssText = 'background:#f0ebe0;padding:4px 10px;border-radius:12px;font-size:13px;cursor:pointer;';
+    tag.dataset.dept = name;
+    tag.textContent = name + ' ✕';
+    overlay.querySelector('#dept-list').appendChild(tag);
+    input.value = '';
+  };
+
+  document.getElementById('settings-save-btn').onclick = () => {
+    const company = overlay.querySelector('#settings-company').value.trim();
+    const department = overlay.querySelector('#settings-department').value.trim();
+    savePresets({ company, department, departments: depts });
+    document.body.removeChild(overlay);
+    showToast('设置已保存');
+    if (onSave) onSave();
+  };
+}
+
 export {
-  showToast, FIXED_COMPANY, FIXED_DEPARTMENT,
+  showToast,
   renderHomePage,
   renderItemList,
   renderItemForm,

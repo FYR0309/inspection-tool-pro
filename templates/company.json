@@ -1,9 +1,13 @@
 {
+  "version": 1,
   "id": "company",
   "name": "公司现场检查整改报告",
   "industry": "制造业",
   "description": "公司级现场检查，整改前后对比报告，含签名行",
   "overviewType": "company",
+
+  "titleTemplate": "{{department}}现场整改报告",
+  "overviewTemplate": "{{checkDate1}}公司现场检查小组对我车间进行现场检查，提出{{total}}个整改项，已整改完成{{done}}项，未完成{{remain}}项，附整改前后对比照片。",
 
   "page": {
     "margins": { "top": 1213, "bottom": 1440, "left": 1123, "right": 1123 },
@@ -56,18 +60,22 @@
     "spacing": { "after": 200 }
   },
 
+  "footerTemplate": {
+    "lines": ["{{company}}", "    {{department}}", "{{date}}"]
+  },
+
   "aiPromptTag": "影响",
 
   "variables": {
     "company": {
       "label": "公司名称",
-      "default": "广西糖业集团红河制糖有限公司",
-      "editable": false
+      "default": "",
+      "editable": true
     },
     "department": {
       "label": "部门",
-      "default": "压榨车间",
-      "editable": false
+      "default": "",
+      "editable": true
     }
   }
 }

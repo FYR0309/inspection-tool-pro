@@ -9,8 +9,26 @@ const { Document, Packer, Paragraph, Table, TableRow, TableCell,
 
 let currentTemplate = null;
 
-/** 加载模板 JSON 对象 */
+/** 加载模板 JSON 对象，自动处理版本兼容 */
 function loadTemplate(templateJson) {
+  // v1 模板兼容：无 titleTemplate 时从 overviewType 推断
+  if (!templateJson.version || templateJson.version < 1) {
+    templateJson.version = 1;
+  }
+  // 确保变量 editable 默认为 true（Pro 版客户可自由编辑）
+  if (templateJson.variables) {
+    for (const [key, v] of Object.entries(templateJson.variables)) {
+      if (v.editable === undefined) v.editable = true;
+      if (v.default === '广西糖业集团红河制糖有限公司') v.default = '';
+      if (v.default === '压榨车间') v.default = '';
+    }
+  }
+  // footerTemplate 兜底
+  if (!templateJson.footerTemplate) {
+    templateJson.footerTemplate = {
+      lines: ['{{company}}', '    {{department}}', '{{date}}']
+    };
+  }
   currentTemplate = templateJson;
 }
 
@@ -253,7 +271,20 @@ function formatDate(date) {
   return `${y}年${m}月${d}日`;
 }
 
-// ---------- 概述文字生成（根据 overviewType） ----------
+// ---------- 概述文字生成（占位符模板 + overviewType 兜底） ----------
+
+/**
+ * 替换模板中的占位符
+ * 支持: {{company}} {{department}} {{date}} {{total}} {{done}} {{remain}}
+ *       {{year}} {{month}} {{half}} {{checkDate1}} {{checkDate2}}
+ */
+function replacePlaceholders(template, vars) {
+  let result = template;
+  for (const [key, value] of Object.entries(vars)) {
+    result = result.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(value ?? ''));
+  }
+  return result;
+}
 
 function buildOverview(header, totalItems, completedItems, unfinishedItems) {
   const tmpl = t();
@@ -262,35 +293,74 @@ function buildOverview(header, totalItems, completedItems, unfinishedItems) {
   const year = inspectDateObj.getFullYear();
   const month = inspectDateObj.getMonth() + 1;
 
-  let titleText, overviewText;
+  // 通用占位符变量
+  const placeholderVars = {
+    company: company || '',
+    department: department || '检查部门',
+    date: sigDate ? formatDate(new Date(sigDate)) : formatDate(new Date()),
+    year: String(year),
+    month: String(month),
+    total: String(totalItems),
+    done: String(completedItems),
+    remain: String(unfinishedItems),
+    half: halfMonth === 'first' ? '上半月' : '下半月',
+    checkDate1: '',
+    checkDate2: '',
+  };
 
+  // 计算检查日期（根据 overviewType）
   switch (tmpl.overviewType) {
     case 'safety':
-      titleText = '安全自检自查整改报告';
-      const check1 = pickWorkday(year, month, inspectDateObj.getDate() - 10, inspectDateObj.getDate() - 8);
-      const check2 = pickWorkday(year, month, inspectDateObj.getDate() - 3, inspectDateObj.getDate() - 1);
-      overviewText = `根据公司安全管理要求，我车间（部门）分别与${formatDate(check1)}、${formatDate(check2)}开展安全自检自查工作，其中提出了（${totalItems}）个整改项，并已整改完成（${completedItems}）项，未能完成整改（${unfinishedItems}）项。`;
+      placeholderVars.checkDate1 = formatDate(pickWorkday(year, month, inspectDateObj.getDate() - 10, inspectDateObj.getDate() - 8));
+      placeholderVars.checkDate2 = formatDate(pickWorkday(year, month, inspectDateObj.getDate() - 3, inspectDateObj.getDate() - 1));
       break;
-
-    case '5s':
-      const halfLabel = halfMonth === 'first' ? '上半月' : '下半月';
+    case '5s': {
       const startD = halfMonth === 'first' ? 13 : 23;
       const endD = halfMonth === 'first' ? 16 : 26;
-      const checkWorkday = pickWorkday(year, month, startD, endD);
-      titleText = `${year}年${month}月${department}5S现场检查通报（${halfLabel}）`;
-      overviewText = `根据红糖发（2022）22号关于印发《广西糖业集团红河制糖有限公司5S现场管理》相关要求，车间组织相关人员于${formatDate(checkWorkday)}对本车间进行${halfLabel}现场检查，现将检查情况反馈如下：本次检查需要整改的共${totalItems}项，其中已整改完成${completedItems}项，未完成整改${unfinishedItems}项。`;
+      placeholderVars.checkDate1 = formatDate(pickWorkday(year, month, startD, endD));
       break;
-
+    }
     case 'company':
-      titleText = `${department}现场整改报告`;
-      const checkD = pickWorkday(year, month, inspectDateObj.getDate() - 5, inspectDateObj.getDate() - 1);
-      overviewText = `${formatDate(checkD)}公司现场检查小组对我车间进行现场检查，提出${totalItems}个整改项，已整改完成${completedItems}项，未完成${unfinishedItems}项，附整改前后对比照片。`;
+      placeholderVars.checkDate1 = formatDate(pickWorkday(year, month, inspectDateObj.getDate() - 5, inspectDateObj.getDate() - 1));
       break;
-
     default:
-      // generic 或未知类型：通用概述
-      titleText = `${department || '检查部门'}检查报告`;
-      overviewText = `本次检查共发现${totalItems}个问题，其中已整改完成${completedItems}项，未完成整改${unfinishedItems}项。`;
+      // generic: 不计算特定日期
+      placeholderVars.checkDate1 = placeholderVars.date;
+      placeholderVars.checkDate2 = placeholderVars.date;
+  }
+
+  // 优先使用模板中的 titleTemplate / overviewTemplate
+  let titleText, overviewText;
+
+  if (tmpl.titleTemplate) {
+    titleText = replacePlaceholders(tmpl.titleTemplate, placeholderVars);
+  } else {
+    // 兜底：用旧的硬编码逻辑（兼容无 titleTemplate 的旧模板）
+    switch (tmpl.overviewType) {
+      case 'safety': titleText = '安全自检自查整改报告'; break;
+      case '5s': titleText = `${year}年${month}月${department}5S现场检查通报（${placeholderVars.half}）`; break;
+      case 'company': titleText = `${department}现场整改报告`; break;
+      default: titleText = `${department || '检查部门'}检查报告`;
+    }
+  }
+
+  if (tmpl.overviewTemplate) {
+    overviewText = replacePlaceholders(tmpl.overviewTemplate, placeholderVars);
+  } else {
+    // 兜底：硬编码概述
+    switch (tmpl.overviewType) {
+      case 'safety':
+        overviewText = `根据公司安全管理要求，我车间（部门）分别与${placeholderVars.checkDate1}、${placeholderVars.checkDate2}开展安全自检自查工作，其中提出了（${totalItems}）个整改项，并已整改完成（${completedItems}）项，未能完成整改（${unfinishedItems}）项。`;
+        break;
+      case '5s':
+        overviewText = `根据红糖发（2022）22号关于印发《广西糖业集团红河制糖有限公司5S现场管理》相关要求，车间组织相关人员于${placeholderVars.checkDate1}对本车间进行${placeholderVars.half}现场检查，现将检查情况反馈如下：本次检查需要整改的共${totalItems}项，其中已整改完成${completedItems}项，未完成整改${unfinishedItems}项。`;
+        break;
+      case 'company':
+        overviewText = `${placeholderVars.checkDate1}公司现场检查小组对我车间进行现场检查，提出${totalItems}个整改项，已整改完成${completedItems}项，未完成${unfinishedItems}项，附整改前后对比照片。`;
+        break;
+      default:
+        overviewText = `本次检查共发现${totalItems}个问题，其中已整改完成${completedItems}项，未完成整改${unfinishedItems}项。`;
+    }
   }
 
   return { titleText, overviewText };
@@ -362,37 +432,34 @@ async function generateDocx(header, items) {
     table,
     // 表格后空行
     new Paragraph({ children: [], spacing: { after: 100 } }),
-    // 落款：公司名称
-    new Paragraph({
-      children: [new TextRun({
-        text: company,
-        size: footerCfg.size || 28,
-        font: footerCfg.font || '宋体',
-      })],
-      alignment: AlignmentType.RIGHT,
-      spacing: { before: 0, after: 0 },
-    }),
-    // 落款：部门
-    new Paragraph({
-      children: [new TextRun({
-        text: `    ${department}`,
-        size: footerCfg.size || 28,
-        font: footerCfg.font || '宋体',
-      })],
-      alignment: AlignmentType.RIGHT,
-      spacing: { before: 0, after: 0 },
-    }),
-    // 落款：日期
-    new Paragraph({
-      children: [new TextRun({
-        text: formatDate(sigDateObj),
-        size: footerCfg.size || 28,
-        font: footerCfg.font || '宋体',
-      })],
-      alignment: AlignmentType.RIGHT,
-      spacing: { before: 0, after: footerCfg.spacing ? footerCfg.spacing.after : 200 },
-    }),
   ];
+
+  // 落款：优先使用 footerTemplate，兜底用硬编码格式
+  const footerLines = (tmpl.footerTemplate && tmpl.footerTemplate.lines)
+    ? tmpl.footerTemplate.lines
+    : [company, `    ${department}`, formatDate(sigDateObj)];
+
+  const footerVars = {
+    company: company || '',
+    department: department || '',
+    date: formatDate(sigDateObj),
+  };
+
+  footerLines.forEach((line, i) => {
+    const text = replacePlaceholders(line, footerVars);
+    const isLast = i === footerLines.length - 1;
+    sectionChildren.push(
+      new Paragraph({
+        children: [new TextRun({
+          text,
+          size: footerCfg.size || 28,
+          font: footerCfg.font || '宋体',
+        })],
+        alignment: AlignmentType.RIGHT,
+        spacing: { before: 0, after: isLast ? (footerCfg.spacing ? footerCfg.spacing.after : 200) : 0 },
+      })
+    );
+  });
 
   // 签名行
   if (tmpl.hasSignatures && tmpl.signatureText) {

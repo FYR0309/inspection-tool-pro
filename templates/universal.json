@@ -1,9 +1,13 @@
 {
+  "version": 1,
   "id": "universal",
   "name": "通用检查报告",
   "industry": "通用",
   "description": "适用于任何检查场景的通用模板",
   "overviewType": "generic",
+
+  "titleTemplate": "{{department}}检查报告",
+  "overviewTemplate": "本次检查共发现{{total}}个问题，其中已整改完成{{done}}项，未完成整改{{remain}}项。",
 
   "page": {
     "margins": { "top": 1213, "bottom": 1440, "left": 1123, "right": 1123 },
@@ -56,18 +60,22 @@
     "spacing": { "after": 200 }
   },
 
+  "footerTemplate": {
+    "lines": ["{{company}}", "    {{department}}", "{{date}}"]
+  },
+
   "aiPromptTag": "影响",
 
   "variables": {
     "company": {
       "label": "公司名称",
-      "default": "广西糖业集团红河制糖有限公司",
-      "editable": false
+      "default": "",
+      "editable": true
     },
     "department": {
       "label": "部门",
-      "default": "压榨车间",
-      "editable": false
+      "default": "",
+      "editable": true
     }
   }
 }

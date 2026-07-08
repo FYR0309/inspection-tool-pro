@@ -1,20 +1,16 @@
 // ai.js — 直接调用 AI API（无需后端代理）
 
-const DOUBAO_API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
-const DOUBAO_API_KEY = 'ark-4b152d9d-0ad1-4e65-838f-a52f264ff4ea-12064';
-const DOUBAO_MODEL = 'ep-20260616232549-wr6bn';
+import { DOUBAO_API_URL, DOUBAO_API_KEY, DOUBAO_MODEL, IMAGE_EDIT_MODEL, IMAGE_API_KEY } from './config.js';
 
 // 火山方舟图片编辑 API (images/generations)
 // 使用 Seedream 4.5 图生图，单独 API Key 授权
 const ARK_BASE_URL = 'https://ark.cn-beijing.volces.com/api/v3';
-const IMAGE_EDIT_MODEL = 'ep-20260619024752-vbxk7';  // 必须用 endpoint ID，不能用模型名
-const IMAGE_API_KEY = 'ark-a5912081-882c-4cbf-917b-e9cac733f0d8-894c4';
 
-function buildPrompt(text, reportType) {
-  const typeLabel = reportType === 'safety' ? '安全检查' : '现场管理';
+function buildPrompt(text, reportType, aiPromptTag = '影响') {
+  const typeLabel = aiPromptTag === '风险' ? '安全检查' : '现场管理';
 
   let extraInstruction = '';
-  if (reportType === 'safety') {
+  if (aiPromptTag === '风险') {
     extraInstruction = '在每条润色后的文字末尾，用逗号自然衔接，直接说明存在什么风险或隐患或危险（不要用"风险："等标签），不超过15个汉字。例如"…，存在火灾隐患"、"…，有触电危险"';
   } else {
     extraInstruction = '在每条润色后的文字末尾，用逗号自然衔接，直接说明带来的影响或后果（不要用"影响："等标签），不超过15个汉字。例如"…，影响现场整洁"、"…，降低工作效率"';
@@ -41,7 +37,7 @@ function buildPrompt(text, reportType) {
  * @param {string} reportType - 'safety' | '5s' | 'company'
  * @returns {Promise<string[]>} 3个优化后的选项
  */
-async function callDoubaoOptimize(text, reportType, signal) {
+async function callDoubaoOptimize(text, reportType, signal, aiPromptTag = '影响') {
   const response = await fetch(DOUBAO_API_URL, {
     method: 'POST',
     headers: {
@@ -52,7 +48,7 @@ async function callDoubaoOptimize(text, reportType, signal) {
     body: JSON.stringify({
       model: DOUBAO_MODEL,
       messages: [
-        { role: 'user', content: buildPrompt(text, reportType) }
+        { role: 'user', content: buildPrompt(text, reportType, aiPromptTag) }
       ],
       temperature: 0.8,
       max_tokens: 2000

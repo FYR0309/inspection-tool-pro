@@ -5,7 +5,7 @@ import { generateDocx, loadTemplate } from './docx-gen.js?v=20260701f';
 import { getTemplate, loadCustomTemplates } from '../templates/templates.js';
 import { callDoubaoOptimize } from './ai.js?v=20260701f';
 import {
-  showToast, FIXED_COMPANY, FIXED_DEPARTMENT,
+  showToast,
   renderHomePage,
   renderItemList,
   renderItemForm,
@@ -21,8 +21,8 @@ const state = {
   items: [],
   currentDraftId: null,  // 当前编辑的草稿 ID
   headerInfo: {
-    company: FIXED_COMPANY,
-    department: FIXED_DEPARTMENT,
+    company: getPresets().company,
+    department: getPresets().department,
     date: getTodayStr(),           // 落款日期
     inspectionDate: getTodayStr(), // 检查日期
     halfMonth: null, // 'first' | 'second' — 仅 5S 使用
@@ -73,7 +73,7 @@ async function handleImportDocx(file, reportType) {
         if (existing) {
           state.items = [...(existing.items || []), ...parsed.items];
           state.headerInfo = existing.headerInfo || {
-            company: FIXED_COMPANY, department: FIXED_DEPARTMENT,
+            company: getPresets().company, department: getPresets().department,
             date: getTodayStr(), inspectionDate: getTodayStr(),
             halfMonth: reportType === '5s' ? 'first' : null,
           };
@@ -82,7 +82,7 @@ async function handleImportDocx(file, reportType) {
       } else {
         state.items = parsed.items;
         state.headerInfo = {
-          company: FIXED_COMPANY, department: FIXED_DEPARTMENT,
+          company: getPresets().company, department: getPresets().department,
           date: getTodayStr(), inspectionDate: getTodayStr(),
           halfMonth: reportType === '5s' ? 'first' : null,
         };
@@ -132,7 +132,7 @@ async function handleImportPhoto(file, reportType) {
         if (existing) {
           state.items = [...(existing.items || []), ...items];
           state.headerInfo = existing.headerInfo || {
-            company: FIXED_COMPANY, department: FIXED_DEPARTMENT,
+            company: getPresets().company, department: getPresets().department,
             date: getTodayStr(), inspectionDate: getTodayStr(),
             halfMonth: reportType === '5s' ? 'first' : null,
           };
@@ -141,7 +141,7 @@ async function handleImportPhoto(file, reportType) {
       } else {
         state.items = items;
         state.headerInfo = {
-          company: FIXED_COMPANY, department: FIXED_DEPARTMENT,
+          company: getPresets().company, department: getPresets().department,
           date: getTodayStr(), inspectionDate: getTodayStr(),
           halfMonth: reportType === '5s' ? 'first' : null,
         };
@@ -202,8 +202,8 @@ function handleTypeSelection(type, resume, draftId, file, importReportType) {
   state.reportType = type;
 
   const defaults = {
-    company: FIXED_COMPANY,
-    department: FIXED_DEPARTMENT,
+    company: getPresets().company,
+    department: getPresets().department,
     date: getTodayStr(),
     inspectionDate: getTodayStr(),
     halfMonth: type === '5s' ? 'first' : null,
@@ -233,7 +233,20 @@ function showItemList() {
     reportType: state.reportType,
     items: state.items,
     headerInfo: state.headerInfo,
-    onAdd: () => showItemForm(),
+    onAdd: (prefill) => {
+      // 如果是检查清单预填（有描述且非编辑），直接添加
+      if (prefill && prefill.description && !prefill._isEdit) {
+        state.items.push({
+          description: prefill.description,
+          beforePhoto: '',
+          afterPhoto: '',
+          status: '待整改',
+        });
+        saveDraftWithId().then(() => showItemList());
+        return;
+      }
+      showItemForm(undefined, null, prefill);
+    },
     onEdit: (index) => showItemForm(index),
     onDelete: (index) => {
       const deletedItem = state.items[index];
@@ -265,8 +278,9 @@ function showItemList() {
 
 // ---------- 新增/编辑条目 ----------
 
-function showItemForm(editIndex, photoOverride) {
-  const item = editIndex !== undefined ? state.items[editIndex] : null;
+function showItemForm(editIndex, photoOverride, prefill) {
+  const item = editIndex !== undefined ? state.items[editIndex]
+    : (prefill ? { description: prefill.description || '', beforePhoto: '', afterPhoto: '', status: '待整改' } : null);
 
   renderItemForm({
     item,
@@ -315,7 +329,10 @@ async function showOptimizePage(text, editIndex) {
   });
 
   try {
-    const options = await callDoubaoOptimize(text, state.reportType, abortController.signal);
+    // 从模板读取 aiPromptTag
+    let aiPromptTag = '影响';
+    try { const tpl = getTemplate(state.reportType); if (tpl.aiPromptTag) aiPromptTag = tpl.aiPromptTag; } catch (e) {}
+    const options = await callDoubaoOptimize(text, state.reportType, abortController.signal, aiPromptTag);
 
     if (cancelled) return; // 已取消，不渲染结果
 
@@ -393,8 +410,25 @@ function showGeneratePage() {
       try {
         // 加载模板 → 生成报告
         const template = getTemplate(state.reportType);
-        loadTemplate(template);
-        const blob = await generateDocx(state.headerInfo, state.items);
+        let blob;
+
+        // 尝试使用克隆引擎（方案B：100%保留原格式）
+        try {
+          const { loadOriginalTemplate, cloneTemplateDocx } = await import('./docx-template-cloner.js');
+          const originalBuffer = await loadOriginalTemplate(state.reportType);
+          if (originalBuffer) {
+            blob = await cloneTemplateDocx(originalBuffer, state.items, template);
+          }
+        } catch (e) {
+          console.warn('克隆引擎不可用，降级为再生模式:', e.message);
+        }
+
+        // 降级：使用 docx-gen.js 再生模式
+        if (!blob) {
+          loadTemplate(template);
+          blob = await generateDocx(state.headerInfo, state.items);
+        }
+
         const fileName = `${template.name}_${state.headerInfo.date}.docx`;
 
         // 先下载到手机
@@ -450,6 +484,29 @@ function showGeneratePage() {
     },
   });
 }
+
+// ---------- 错误边界 ----------
+
+window.addEventListener('error', (e) => {
+  console.error('应用错误:', e.error || e.message);
+  // 防止白屏：显示友好提示
+  const container = document.getElementById('page-container');
+  if (container && !container.textContent.trim()) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:60px 20px;">
+        <div style="font-size:48px;margin-bottom:12px;">😵</div>
+        <p style="font-size:16px;font-weight:600;">出了点问题</p>
+        <p style="font-size:13px;color:#999;margin-bottom:16px;">请刷新页面重试</p>
+        <button class="btn btn-primary" onclick="location.reload()" style="font-size:14px;">🔄 刷新页面</button>
+        <p style="font-size:11px;color:#ccc;margin-top:12px;">如果问题持续出现，请清理浏览器缓存</p>
+      </div>`;
+  }
+});
+
+// 未处理的 Promise 拒绝
+window.addEventListener('unhandledrejection', (e) => {
+  console.error('未处理的Promise错误:', e.reason);
+});
 
 // ---------- 启动 ----------
 

@@ -1,10 +1,11 @@
-// db.js — IndexedDB 草稿存储 + localStorage 预设 + 模板管理
-// v3: 新增 templates store，数据库更名为 inspection-tool-pro
+// db.js — IndexedDB 草稿存储 + localStorage 预设 + 模板管理 + 检查清单
+// v4: 新增 checklists store
 
 const DB_NAME = 'inspection-tool-pro';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_NAME = 'drafts';
 const TEMPLATE_STORE = 'templates';
+const CHECKLIST_STORE = 'checklists';
 const MAX_DRAFTS = 6;
 
 // ---------- ID 生成 ----------
@@ -45,6 +46,13 @@ function openDB() {
         // v2 → v3：新增模板存储
         if (!db.objectStoreNames.contains(TEMPLATE_STORE)) {
           db.createObjectStore(TEMPLATE_STORE, { keyPath: 'id' });
+        }
+      }
+
+      if (oldVersion < 4) {
+        // v3 → v4：新增检查清单存储
+        if (!db.objectStoreNames.contains(CHECKLIST_STORE)) {
+          db.createObjectStore(CHECKLIST_STORE, { keyPath: 'id' });
         }
       }
     };
@@ -232,13 +240,24 @@ function getPresets() {
     if (raw) return JSON.parse(raw);
   } catch (e) { /* ignore */ }
   return {
-    company: '广西糖业集团红河制糖有限公司',
-    department: '压榨车间'
+    company: '',
+    department: '',
+    departments: [],
   };
 }
 
 function savePresets(presets) {
   localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+}
+
+/** 添加部门到预设列表（去重） */
+function addDepartmentPreset(dept) {
+  const p = getPresets();
+  if (!p.departments) p.departments = [];
+  if (dept && !p.departments.includes(dept)) {
+    p.departments.push(dept);
+    savePresets(p);
+  }
 }
 
 function getTodayStr() {
@@ -324,4 +343,45 @@ function exportTemplateAsFile(templateRecord) {
   URL.revokeObjectURL(url);
 }
 
-export { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, MAX_DRAFTS, migrateFromV1, saveTemplate, deleteTemplate, getCustomTemplate, listCustomTemplates, exportTemplateAsFile };
+// ---------- 检查清单 ----------
+
+async function saveChecklist(name, items) {
+  const db = await openDB();
+  const tx = db.transaction(CHECKLIST_STORE, 'readwrite');
+  const store = tx.objectStore(CHECKLIST_STORE);
+  const record = {
+    id: 'cl_' + Date.now(),
+    name,
+    items: items || [],
+    updatedAt: Date.now(),
+  };
+  store.put(record);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function listChecklists() {
+  const db = await openDB();
+  const tx = db.transaction(CHECKLIST_STORE, 'readonly');
+  const store = tx.objectStore(CHECKLIST_STORE);
+  const req = store.getAll();
+  return new Promise((resolve) => {
+    req.onsuccess = () => resolve((req.result || []).sort((a, b) => b.updatedAt - a.updatedAt));
+    req.onerror = () => resolve([]);
+  });
+}
+
+async function deleteChecklist(id) {
+  const db = await openDB();
+  const tx = db.transaction(CHECKLIST_STORE, 'readwrite');
+  const store = tx.objectStore(CHECKLIST_STORE);
+  store.delete(id);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, addDepartmentPreset, getTodayStr, MAX_DRAFTS, migrateFromV1, saveTemplate, deleteTemplate, getCustomTemplate, listCustomTemplates, exportTemplateAsFile, saveChecklist, listChecklists, deleteChecklist };

@@ -3,6 +3,8 @@
 // 依赖：JSZip（全局）、DOMParser（浏览器内置）
 // 三阶段识别：XML结构提取 → 关键词匹配 → AI兜底
 
+import { DOUBAO_API_URL, DOUBAO_API_KEY, DOUBAO_MODEL } from './config.js';
+
 const TYPE_KEYWORDS = {
   number:   ['序号', '编号', 'No.', '项次', '检查序号', '隐患编号', '问题编号', 'NO', 'serial'],
   image:    ['照片', '图片', '影像', '附图', '佐证', '截图', '图像', 'photo', 'image'],
@@ -336,14 +338,14 @@ async function aiGuessColumns(unknowns) {
 {"results": [{"header": "列名", "type": "类型"}]}`;
 
   try {
-    const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+    const response = await fetch(DOUBAO_API_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ark-4b152d9d-0ad1-4e65-838f-a52f264ff4ea-12064',
+        'Authorization': `Bearer ${DOUBAO_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'ep-20260616232549-wr6bn',
+        model: DOUBAO_MODEL,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
         max_tokens: 500,
