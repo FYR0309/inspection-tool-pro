@@ -248,7 +248,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
               <div class="card-title">${c.name}</div>
               <div class="card-desc">${c.description}</div>
             </div>
-            <button class="type-import-btn" data-action="import-file-type" data-type="${c.id}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入文件到此类型">📥</button>
+            <button class="type-import-btn" data-action="import-file-type" data-type="${c.id}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入已有报告或照片，继续编辑">📥</button>
           </div>
         `).join('')}
       ` : ''}
@@ -262,7 +262,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
               <div class="card-title">${c.name}</div>
               <div class="card-desc">${c.description}</div>
             </div>
-            <button class="type-import-btn" data-action="import-file-type" data-type="${c.id}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入文件到此类型">📥</button>
+            <button class="type-import-btn" data-action="import-file-type" data-type="${c.id}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入已有报告或照片，继续编辑">📥</button>
             <button data-action="edit-template" data-id="${c.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:6px;flex-shrink:0;" title="编辑模板">✏️</button>
             <button data-action="export-template" data-id="${c.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:6px;flex-shrink:0;" title="导出模板">📤</button>
             <button data-action="delete-template" data-id="${c.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:6px;flex-shrink:0;" title="删除模板">🗑️</button>
@@ -270,8 +270,10 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
         `).join('')}
       ` : ''}
 
-      <div style="text-align:center;margin-top:12px;">
-        <button class="btn btn-outline" id="import-template-btn" style="width:100%;">📥 导入模板（.docx / .json）</button>
+      <p style="font-size:11px;color:#bbb;text-align:center;margin:8px 0;">💡 点击卡片上的 📥 可导入已有报告继续编辑，或导入照片自动识别</p>
+
+      <div style="text-align:center;margin-top:8px;">
+        <button class="btn btn-outline" id="import-template-btn" style="width:100%;">📥 导入新模板（.docx / .json）</button>
       </div>
 
       ${draftsHtml}
@@ -406,8 +408,20 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       return;
     }
   });
-  // 历史报告：点击重新生成下载
+  // 历史报告：删除按钮（必须在 regen 之前检查，因为删除按钮嵌套在卡片内）
   document.getElementById('home-page').addEventListener('click', async (e) => {
+    const delReportBtn = e.target.closest('[data-action="del-report"]');
+    if (delReportBtn) {
+      e.stopPropagation();
+      const rptId = delReportBtn.dataset.id;
+      import('./db.js?v=20260701f').then(async ({ deleteReport, listDrafts }) => {
+        await deleteReport(rptId);
+        const d = await listDrafts();
+        renderHomePage({ drafts: d, onSelectType });
+        showToast('报告记录已删除');
+      });
+      return;
+    }
     const regenBtn = e.target.closest('[data-action="regen-report"]');
     if (regenBtn) {
       e.stopPropagation();
@@ -436,18 +450,6 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
         console.error('重新生成失败:', err);
         showToast('重新生成失败，请重试');
       }
-      return;
-    }
-    const delReportBtn = e.target.closest('[data-action="del-report"]');
-    if (delReportBtn) {
-      e.stopPropagation();
-      const rptId = delReportBtn.dataset.id;
-      import('./db.js?v=20260701f').then(async ({ deleteReport, listDrafts }) => {
-        await deleteReport(rptId);
-        const d = await listDrafts();
-        renderHomePage({ drafts: d, onSelectType });
-        showToast('报告记录已删除');
-      });
       return;
     }
   });

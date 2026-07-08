@@ -114,7 +114,7 @@ async function cloneTemplateDocx(originalBuffer, items, templateConfig) {
   if (!docXml) throw new Error('模板文件缺少 document.xml');
 
   // 2. 找到表格和数据行模板
-  const { tableStart, tableEnd, headerRowEnd, templateRow, colWidths } = findTableInfo(docXml);
+  const { tableStart, tableEnd, headerRowEnd, templateRow, colWidths, signatureRows } = findTableInfo(docXml);
   if (!templateRow) throw new Error('模板中未找到数据行');
 
   // 3. 处理图片：压缩 + 加入 ZIP
@@ -123,11 +123,12 @@ async function cloneTemplateDocx(originalBuffer, items, templateConfig) {
   // 4. 构建新的数据行 XML
   const newRowsXml = buildDataRows(items, templateRow, templateConfig, imageInfos);
 
-  // 5. 替换文档中的表格内容
+  // 5. 替换文档中的表格内容（保留签名行）
   const beforeTable = docXml.substring(0, tableStart);
   const afterTable = docXml.substring(tableEnd);
   const headerSection = docXml.substring(tableStart, headerRowEnd);
-  docXml = beforeTable + headerSection + newRowsXml + afterTable;
+  const signatureXml = (signatureRows && signatureRows.length > 0) ? signatureRows.join('') : '';
+  docXml = beforeTable + headerSection + newRowsXml + signatureXml + afterTable;
 
   // 6. 更新关系文件（新增图片引用）
   await updateRelations(zip, imageInfos);
@@ -145,7 +146,7 @@ async function cloneTemplateDocx(originalBuffer, items, templateConfig) {
 
 // ---------- 表格信息提取 ----------
 
-/** 在 document.xml 字符串中定位表格和模板行 */
+/** 在 document.xml 字符串中定位表格、模板行和签名行 */
 function findTableInfo(xml) {
   // 找 <w:tbl 开始和 </w:tbl> 结束
   const tblStart = xml.indexOf('<w:tbl');
@@ -164,7 +165,7 @@ function findTableInfo(xml) {
   const firstTrStart = tblStart + trMatches[0].index;
   const secondTrStart = tblStart + trMatches[1].index;
 
-  // 表头行是第一行，数据模板是第二行
+  // 表头行是第一行
   const headerRowEnd = secondTrStart;
 
   // 找数据模板行的结束
@@ -180,7 +181,26 @@ function findTableInfo(xml) {
     colWidths.push(parseInt(m[1]));
   }
 
-  return { tableStart: tblStart, tableEnd, headerRowEnd, templateRow, colWidths };
+  // 检测签名行：最后1-2行如果有合并单元格且含"编制/审核/批准"关键词
+  const signatureRows = [];
+  const totalRows = trMatches.length;
+  const sigKeywords = /编制|审核|批准|审批|校对/;
+  for (let i = totalRows - 1; i >= Math.max(1, totalRows - 2); i--) {
+    const rowStart = tblStart + trMatches[i].index;
+    let rowEnd;
+    if (i < totalRows - 1) {
+      rowEnd = tblStart + trMatches[i + 1].index;
+    } else {
+      rowEnd = tableEnd;
+    }
+    const rowXml = xml.substring(rowStart, rowEnd);
+    // 检查是否含有关键词
+    if (sigKeywords.test(rowXml)) {
+      signatureRows.unshift(rowXml);
+    }
+  }
+
+  return { tableStart: tblStart, tableEnd, headerRowEnd, templateRow, colWidths, signatureRows };
 }
 
 // ---------- 图片准备 ----------
@@ -240,8 +260,13 @@ function buildDataRows(items, templateRow, templateConfig, imageInfos) {
 
       if (col.type === 'number') {
         return replaceCellText(cellXml, String(i + 1));
-      } else if (col.type === 'image' && rowImages.length > 0) {
-        return replaceCellWithImage(cellXml, rowImages[0]);
+      } else if (col.type === 'image') {
+        if (rowImages.length > 0) {
+          return replaceCellWithImage(cellXml, rowImages[0]);
+        } else {
+          // 无图片时清除旧占位符，保留空单元格
+          return replaceCellText(cellXml, '');
+        }
       } else if (col.type === 'remark') {
         const text = item.afterPhoto ? '已整改' : '';
         return replaceCellText(cellXml, text);
@@ -273,34 +298,36 @@ function extractCells(rowXml) {
   return cells;
 }
 
-/** 替换单元格中的所有 <w:t> 文字 */
+/** 替换单元格中的所有 <w:t> 文字，并清除旧图片 */
 function replaceCellText(cellXml, newText) {
-  // 替换所有 <w:t>...</w:t> 和 <w:t xml:space="preserve">...</w:t> 中的文本
-  return cellXml.replace(/(<w:t[^>]*>)[^<]*(<\/w:t>)/g, `$1${escapeXml(newText)}$2`);
+  // 先移除所有 <w:drawing> 元素（图片列已用 replaceCellWithImage 处理，
+  // 这里防止非图片列里的旧模板图片残留）
+  let cleaned = cellXml.replace(/<w:drawing[\s\S]*?<\/w:drawing>/g, '');
+  // 替换所有 <w:t>...</w:t> 中的文本
+  return cleaned.replace(/(<w:t[^>]*>)[^<]*(<\/w:t>)/g, `$1${escapeXml(newText)}$2`);
 }
 
-/** 在单元格中替换/插入图片 */
+/** 提取单元格的属性部分（w:tc 开始标签到 w:tcPr 结束） */
+function extractCellPrefix(cellXml) {
+  const tcPrEnd = cellXml.indexOf('</w:tcPr>');
+  if (tcPrEnd !== -1) {
+    return cellXml.substring(0, tcPrEnd + '</w:tcPr>'.length);
+  }
+  // 没有 tcPr，只保留 <w:tc> 开始标签
+  const tagEnd = cellXml.indexOf('>');
+  return cellXml.substring(0, tagEnd + 1);
+}
+
+/** 在单元格中替换/插入图片（完全替换，不留旧内容） */
 function replaceCellWithImage(cellXml, imageInfo) {
-  // 移除单元格中已有的段落内容，替换为一个带图片的段落
-  const imgWidth = 192; // displayWidth in EMU-like units (actually we use pixels * 9525)
+  const imgWidth = 192;
   const imgWidthEmu = imgWidth * 9525;
   const imgHeightEmu = imgWidth * 9525;
   const drawingId = imageInfo.rowIndex * 100 + imageInfo.colIndex + 1;
 
-  // 移除已有 <w:p> 内容，保留第一个段落结构
-  const firstParaEnd = cellXml.indexOf('</w:p>');
-  let prefix = '';
-  let suffix = '';
-  if (firstParaEnd !== -1) {
-    prefix = cellXml.substring(0, firstParaEnd + '</w:p>'.length);
-    suffix = cellXml.substring(firstParaEnd + '</w:p>'.length);
-  } else {
-    // 无段落，整个替换
-    prefix = '<w:tc><w:tcPr><w:tcW w:w="2800" w:type="dxa"/></w:tcPr>';
-    suffix = '</w:tc>';
-  }
+  // 只保留 w:tc 开始标签 + w:tcPr（丢弃所有旧段落内容）
+  const prefix = extractCellPrefix(cellXml);
 
-  // 构建图片段落
   const imagePara = `
 <w:p>
   <w:pPr>
@@ -341,7 +368,7 @@ function replaceCellWithImage(cellXml, imageInfo) {
   </w:r>
 </w:p>`;
 
-  return prefix + imagePara + suffix;
+  return prefix + imagePara + '</w:tc>';
 }
 
 function escapeXml(str) {
