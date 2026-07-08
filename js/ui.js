@@ -341,11 +341,9 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       input.onchange = (ev) => {
         const file = ev.target.files[0];
         if (!file) return;
-        // 导入报告编辑：限制 30MB（含照片的docx可能较大）
-        const MAX_FILE = 30 * 1024 * 1024;
-        if (file.size > MAX_FILE) {
-          showToast(`文件过大（${(file.size / 1024 / 1024).toFixed(0)}MB），请压缩后重试`);
-          return;
+        // 大文件提示但不阻止（浏览器可以处理）
+        if (file.size > 30 * 1024 * 1024) {
+          showToast(`文件较大（${(file.size / 1024 / 1024).toFixed(0)}MB），处理可能需要时间...`);
         }
         if (file.name.endsWith('.docx')) {
           onSelectType('__import_docx__', false, null, file, reportType);
@@ -1431,12 +1429,11 @@ function showImportPanel({ onSelectType, onBack }) {
         setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
       }
     } else if (ext === 'docx') {
-      // 文件大小检查：超过 10MB 拒绝（浏览器内存限制）
-      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-      if (file.size > MAX_FILE_SIZE) {
-        statusText.textContent = `文件过大（${(file.size / 1024 / 1024).toFixed(1)}MB），请压缩图片后重新上传（建议≤10MB）`;
-        setTimeout(() => { statusDiv.style.display = 'none'; }, 5000);
-        return;
+      // 文件大小提醒：超过 20MB 提示但允许继续（解析可能较慢）
+      if (file.size > 20 * 1024 * 1024) {
+        statusText.textContent = `文件较大（${(file.size / 1024 / 1024).toFixed(0)}MB），解析可能需要较长时间，请耐心等待...`;
+      } else {
+        statusText.textContent = '正在解析 Word 模板...';
       }
       statusText.textContent = '正在解析 Word 模板...';
       try {
