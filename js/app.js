@@ -1,7 +1,7 @@
 // app.js — 应用主入口：全局状态、页面路由、事件协调
 
 import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260701f';
-import { generateDocx, loadTemplate } from './docx-gen.js?v=20260701f';
+import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260701f';
 import { getTemplate, loadCustomTemplates } from '../templates/templates.js';
 import { callDoubaoOptimize } from './ai.js?v=20260701f';
 import {
@@ -399,12 +399,25 @@ async function showOptimizePage(text, editIndex) {
 
 // ---------- 生成报告 ----------
 
-function showGeneratePage() {
+async function showGeneratePage() {
+  // 预计算概述文字供编辑
+  let preOverview = { titleText: '', overviewText: '' };
+  try {
+    const tpl = getTemplate(state.reportType);
+    loadTemplate(tpl);
+    const total = state.items.length;
+    const done = state.items.filter(i => i.afterPhoto).length;
+    const { buildOverview } = await import('./docx-gen.js?v=20260701f');
+    preOverview = buildOverview(state.headerInfo, total, done, total - done);
+  } catch (e) { /* 使用空值 */ }
+
   renderGeneratePage({
     reportType: state.reportType,
     headerInfo: state.headerInfo,
     items: state.items,
-    onConfirm: async (action) => {
+    preTitle: preOverview.titleText,
+    preOverview: preOverview.overviewText,
+    onConfirm: async (action, editedTitle, editedOverview) => {
       showToast('正在生成报告...');
 
       try {
@@ -426,7 +439,8 @@ function showGeneratePage() {
         // 降级：使用 docx-gen.js 再生模式
         if (!blob) {
           loadTemplate(template);
-          blob = await generateDocx(state.headerInfo, state.items);
+          const customOv = editedTitle || editedOverview ? { titleText: editedTitle, overviewText: editedOverview } : null;
+          blob = await generateDocx(state.headerInfo, state.items, customOv);
         }
 
         const fileName = `${template.name}_${state.headerInfo.date}.docx`;
@@ -440,6 +454,17 @@ function showGeneratePage() {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+
+        // 保存报告历史
+        try {
+          const { saveReport } = await import('./db.js?v=20260701f');
+          await saveReport({
+            type: state.reportType,
+            typeName: template.name,
+            items: state.items,
+            headerInfo: state.headerInfo,
+          });
+        } catch (e) { /* 历史保存失败不影响主流程 */ }
 
         if (action === 'share') {
           // 微信内置浏览器不支持文件分享，先下载再提示

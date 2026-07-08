@@ -1,12 +1,14 @@
-// db.js — IndexedDB 草稿存储 + localStorage 预设 + 模板管理 + 检查清单
-// v4: 新增 checklists store
+// db.js — IndexedDB 草稿存储 + localStorage 预设 + 模板管理 + 检查清单 + 报告历史
+// v5: 新增 reports store
 
 const DB_NAME = 'inspection-tool-pro';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE_NAME = 'drafts';
 const TEMPLATE_STORE = 'templates';
 const CHECKLIST_STORE = 'checklists';
+const REPORT_STORE = 'reports';
 const MAX_DRAFTS = 6;
+const MAX_REPORTS = 20;
 
 // ---------- ID 生成 ----------
 
@@ -53,6 +55,13 @@ function openDB() {
         // v3 → v4：新增检查清单存储
         if (!db.objectStoreNames.contains(CHECKLIST_STORE)) {
           db.createObjectStore(CHECKLIST_STORE, { keyPath: 'id' });
+        }
+      }
+
+      if (oldVersion < 5) {
+        // v4 → v5：新增报告历史存储
+        if (!db.objectStoreNames.contains(REPORT_STORE)) {
+          db.createObjectStore(REPORT_STORE, { keyPath: 'id' });
         }
       }
     };
@@ -384,4 +393,65 @@ async function deleteChecklist(id) {
   });
 }
 
-export { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, addDepartmentPreset, getTodayStr, MAX_DRAFTS, migrateFromV1, saveTemplate, deleteTemplate, getCustomTemplate, listCustomTemplates, exportTemplateAsFile, saveChecklist, listChecklists, deleteChecklist };
+// ---------- 报告历史 ----------
+
+async function saveReport(reportData) {
+  const db = await openDB();
+  const tx = db.transaction(REPORT_STORE, 'readwrite');
+  const store = tx.objectStore(REPORT_STORE);
+
+  const record = {
+    id: 'rpt_' + Date.now(),
+    type: reportData.type,
+    typeName: reportData.typeName,
+    items: reportData.items,
+    headerInfo: reportData.headerInfo,
+    itemCount: reportData.items?.length || 0,
+    createdAt: new Date().toISOString(),
+  };
+
+  store.put(record);
+
+  // 限制最多 MAX_REPORTS 条
+  const all = await new Promise((resolve, reject) => {
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = (e) => reject(e.target.error);
+  });
+
+  if (all.length > MAX_REPORTS) {
+    const sorted = all.sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    for (const r of sorted.slice(0, all.length - MAX_REPORTS)) {
+      store.delete(r.id);
+    }
+  }
+
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve(record);
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+async function listReports() {
+  const db = await openDB();
+  const tx = db.transaction(REPORT_STORE, 'readonly');
+  const store = tx.objectStore(REPORT_STORE);
+  const req = store.getAll();
+  return new Promise((resolve) => {
+    req.onsuccess = () => resolve((req.result || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    req.onerror = () => resolve([]);
+  });
+}
+
+async function deleteReport(id) {
+  const db = await openDB();
+  const tx = db.transaction(REPORT_STORE, 'readwrite');
+  const store = tx.objectStore(REPORT_STORE);
+  store.delete(id);
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject(e.target.error);
+  });
+}
+
+export { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, addDepartmentPreset, getTodayStr, MAX_DRAFTS, migrateFromV1, saveTemplate, deleteTemplate, getCustomTemplate, listCustomTemplates, exportTemplateAsFile, saveChecklist, listChecklists, deleteChecklist, saveReport, listReports, deleteReport };

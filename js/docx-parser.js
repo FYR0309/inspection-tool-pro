@@ -41,9 +41,9 @@ function guessImageSubtype(headerText, existingImageCount) {
 
 /** 从 document.xml 提取页边距 */
 function extractPageMargins(doc) {
-  const sectPr = doc.querySelector('w|sectPr, sectPr');
+  const sectPr = doc.querySelector('sectPr, sectPr');
   if (!sectPr) return null;
-  const pgMar = sectPr.querySelector('w|pgMar, pgMar');
+  const pgMar = sectPr.querySelector('pgMar, pgMar');
   if (!pgMar) return null;
   return {
     top: parseInt(pgMar.getAttribute('w:top') || pgMar.getAttribute('top') || '1213'),
@@ -56,31 +56,31 @@ function extractPageMargins(doc) {
 /** 从 document.xml 提取表格结构 */
 function extractTableStructure(doc) {
   // 找第一个表格
-  const tbl = doc.querySelector('w|tbl, tbl');
+  const tbl = doc.querySelector('tbl, tbl');
   if (!tbl) return null;
 
   // 提取列宽
-  const gridCols = tbl.querySelectorAll('w|gridCol, gridCol');
+  const gridCols = tbl.querySelectorAll('gridCol, gridCol');
   const colWidths = Array.from(gridCols).map(c =>
     parseInt(c.getAttribute('w:w') || c.getAttribute('w') || '1800')
   );
 
   // 提取表格总宽
-  const tblPr = tbl.querySelector('w|tblPr, tblPr');
-  const tblW = tblPr ? tblPr.querySelector('w|tblW, tblW') : null;
+  const tblPr = tbl.querySelector('tblPr, tblPr');
+  const tblW = tblPr ? tblPr.querySelector('tblW, tblW') : null;
   const tableWidth = tblW
     ? parseInt(tblW.getAttribute('w:w') || tblW.getAttribute('w') || '9207')
     : colWidths.reduce((a, b) => a + b, 0);
 
   // 提取表格行
-  const rows = tbl.querySelectorAll('w|tr, tr');
+  const rows = tbl.querySelectorAll('tr, tr');
   if (rows.length === 0) return null;
 
   // 找表头行（含 tblHeader 的第一行）或第一行
   let headerRow = null;
   for (const row of rows) {
-    const trPr = row.querySelector('w|trPr, trPr');
-    if (trPr && trPr.querySelector('w|tblHeader, tblHeader')) {
+    const trPr = row.querySelector('trPr, trPr');
+    if (trPr && trPr.querySelector('tblHeader, tblHeader')) {
       headerRow = row;
       break;
     }
@@ -88,21 +88,21 @@ function extractTableStructure(doc) {
   if (!headerRow) headerRow = rows[0];
 
   // 提取列头文字
-  const cells = headerRow.querySelectorAll('w|tc, tc');
+  const cells = headerRow.querySelectorAll('tc, tc');
   const headers = Array.from(cells).map(cell => {
-    const texts = cell.querySelectorAll('w|t, t');
+    const texts = cell.querySelectorAll('t, t');
     return Array.from(texts).map(t => t.textContent || '').join('');
   });
 
   // 提取表头样式
   let headerFont = '宋体', headerSize = 24;
-  const firstRun = headerRow.querySelector('w|rPr, rPr');
+  const firstRun = headerRow.querySelector('rPr, rPr');
   if (firstRun) {
-    const rFonts = firstRun.querySelector('w|rFonts, rFonts');
+    const rFonts = firstRun.querySelector('rFonts, rFonts');
     if (rFonts) {
       headerFont = rFonts.getAttribute('w:eastAsia') || rFonts.getAttribute('eastAsia') || '宋体';
     }
-    const sz = firstRun.querySelector('w|sz, sz');
+    const sz = firstRun.querySelector('sz, sz');
     if (sz) headerSize = parseInt(sz.getAttribute('w:val') || sz.getAttribute('val') || '24');
   }
 
@@ -111,7 +111,7 @@ function extractTableStructure(doc) {
 
 /** 提取签名行 */
 function extractSignature(doc) {
-  const paragraphs = doc.querySelectorAll('w|p, p');
+  const paragraphs = doc.querySelectorAll('p, p');
   for (const p of paragraphs) {
     const text = p.textContent || '';
     if (text.includes('编制') || text.includes('审核') || text.includes('批准')) {
@@ -123,7 +123,7 @@ function extractSignature(doc) {
 
 /** 提取标题文字（表格前第一个有意义的短段落） */
 function extractTitle(doc) {
-  const paragraphs = doc.querySelectorAll('w|p, p');
+  const paragraphs = doc.querySelectorAll('p, p');
   for (const p of paragraphs) {
     const text = (p.textContent || '').trim();
     // 跳过空段落和太长的段落（可能是正文）
@@ -134,15 +134,15 @@ function extractTitle(doc) {
 
 /** 提取标题样式 */
 function extractTitleStyle(doc) {
-  const paragraphs = doc.querySelectorAll('w|p, p');
+  const paragraphs = doc.querySelectorAll('p, p');
   for (const p of paragraphs) {
     const text = (p.textContent || '').trim();
     if (text.length > 2 && text.length < 60) {
-      const rPr = p.querySelector('w|rPr, rPr');
+      const rPr = p.querySelector('rPr, rPr');
       if (rPr) {
-        const rFonts = rPr.querySelector('w|rFonts, rFonts');
-        const sz = rPr.querySelector('w|sz, sz');
-        const b = rPr.querySelector('w|b, b');
+        const rFonts = rPr.querySelector('rFonts, rFonts');
+        const sz = rPr.querySelector('sz, sz');
+        const b = rPr.querySelector('b, b');
         return {
           font: rFonts ? (rFonts.getAttribute('w:eastAsia') || rFonts.getAttribute('eastAsia') || '宋体') : '宋体',
           size: sz ? parseInt(sz.getAttribute('w:val') || sz.getAttribute('val') || '36') : 36,
@@ -248,7 +248,7 @@ async function parseDocxTemplate(file) {
   });
 
   // 6. 组装模板 JSON
-  const templateName = titleText ? `从docx导入：${titleText}` : `导入模板_${new Date().toISOString().slice(0, 10)}`;
+  const templateName = titleText || `导入模板_${new Date().toISOString().slice(0, 10)}`;
 
   const template = {
     id: 'tpl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),

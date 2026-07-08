@@ -7,7 +7,7 @@
   "overviewType": "5s",
 
   "titleTemplate": "{{year}}年{{month}}月{{department}}5S现场检查通报（{{half}}）",
-  "overviewTemplate": "根据红糖发（2022）22号关于印发《广西糖业集团红河制糖有限公司5S现场管理》相关要求，车间组织相关人员于{{checkDate1}}对本车间进行{{half}}现场检查，现将检查情况反馈如下：本次检查需要整改的共{{total}}项，其中已整改完成{{done}}项，未完成整改{{remain}}项。",
+  "overviewTemplate": "根据红糖发（2022）22号关于印发《{{company}}5S现场管理》相关要求，车间组织相关人员于{{checkDate1}}对本车间进行{{half}}现场检查，现将检查情况反馈如下：本次检查需要整改的共{{total}}项，其中已整改完成{{done}}项，未完成整改{{remain}}项。",
 
   "page": {
     "margins": { "top": 1213, "bottom": 1440, "left": 1123, "right": 1123 },

@@ -7,7 +7,7 @@
   "overviewType": "generic",
 
   "titleTemplate": "{{department}}检查报告",
-  "overviewTemplate": "本次检查共发现{{total}}个问题，其中已整改完成{{done}}项，未完成整改{{remain}}项。",
+  "overviewTemplate": "本次共检查出{{total}}项问题，已完成整改{{done}}项，剩余{{remain}}项待跟进。",
 
   "page": {
     "margins": { "top": 1213, "bottom": 1440, "left": 1123, "right": 1123 },

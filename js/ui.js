@@ -137,6 +137,31 @@ function showToast(msg, duration = 2000, undoOpts) {
   }
 }
 
+/** 确认对话框：标题 + 消息 + 确认/取消 */
+function showConfirmDialog({ title, message, confirmText, cancelText, onConfirm, onCancel }) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:70;display:flex;align-items:center;justify-content:center;';
+  overlay.innerHTML = `
+    <div style="background:#fff;width:85%;max-width:360px;border-radius:16px;padding:24px;text-align:center;">
+      <h3 style="margin-bottom:10px;">${title}</h3>
+      <p style="font-size:14px;color:#666;margin-bottom:18px;">${message}</p>
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline btn-block" id="confirm-cancel-btn">${cancelText || '取消'}</button>
+        <button class="btn btn-primary btn-block" id="confirm-ok-btn">${confirmText || '确定'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#confirm-cancel-btn').onclick = () => {
+    document.body.removeChild(overlay);
+    if (onCancel) onCancel();
+  };
+  overlay.querySelector('#confirm-ok-btn').onclick = () => {
+    document.body.removeChild(overlay);
+    if (onConfirm) onConfirm();
+  };
+}
+
 function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
@@ -166,8 +191,15 @@ function renderHistoryTags(key, onClick) {
 
 // ---------- 首页 ----------
 
-function renderHomePage({ presets, drafts, onSelectType }) {
+async function renderHomePage({ presets, drafts, onSelectType }) {
   const today = getTodayStr();
+
+  // 加载报告历史
+  let reports = [];
+  try {
+    const { listReports } = await import('./db.js?v=20260701f');
+    reports = await listReports();
+  } catch (e) { /* ignore */ }
 
   // 从模板列表动态生成类型卡片（分组：内置 / 自定义）
   const typeInfo = getTypeInfo();
@@ -199,10 +231,11 @@ function renderHomePage({ presets, drafts, onSelectType }) {
   pageContainer.innerHTML = `
     <div class="page active" id="home-page">
       <h2 style="font-size:22px;margin-bottom:4px;">安全检查报告</h2>
-      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">选择检查类型开始</p>
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">选择一个模板开始，或导入您的 Word 模板</p>
 
-      <div class="presets-bar" id="presets-bar" style="cursor:pointer;" title="点击编辑公司/部门信息">
-        🏢 ${escapeHtml(getPresetCompany() || '点击设置公司')} · 👤 ${escapeHtml(getPresetDepartment() || '点击设置部门')} · 📅 ${today}
+	      <p style="color:#bbb;font-size:11px;margin-bottom:6px;text-align:center;">💡 支持拍照、语音输入、AI润色</p>
+      <div class="presets-bar" id="presets-bar" style="cursor:pointer;${!getPresetCompany() ? 'background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:8px 12px;' : ''}" title="点击编辑公司/部门信息（报告落款使用）">
+        🏢 ${escapeHtml(getPresetCompany() || '⚠️ 点击设置公司名称（报告必填）')} · 👤 ${escapeHtml(getPresetDepartment() || '点击设置部门')} · 📅 ${today}
         <span style="font-size:11px;margin-left:4px;">✏️</span>
       </div>
 
@@ -242,6 +275,22 @@ function renderHomePage({ presets, drafts, onSelectType }) {
       </div>
 
       ${draftsHtml}
+
+      ${reports.length > 0 ? `
+        <div style="margin-top:16px;">
+          <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">📚 历史报告 (${reports.length})</h3>
+          ${reports.map(r => `
+            <div class="card" style="display:flex;align-items:center;gap:10px;border-left:4px solid #4caf50;cursor:pointer;" data-action="regen-report" data-id="${r.id}">
+              <span style="font-size:24px;flex-shrink:0;">📄</span>
+              <div style="flex:1;min-width:0;">
+                <div style="font-weight:600;font-size:14px;">${escapeHtml(r.typeName || r.type)}</div>
+                <div style="font-size:12px;color:#999;">${r.itemCount} 项 · ${new Date(r.createdAt).toLocaleDateString('zh-CN')} ${new Date(r.createdAt).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'})}</div>
+              </div>
+              <button data-action="del-report" data-id="${r.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;" title="删除">🗑️</button>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
     </div>
   `;
 
@@ -357,6 +406,52 @@ function renderHomePage({ presets, drafts, onSelectType }) {
       return;
     }
   });
+  // 历史报告：点击重新生成下载
+  document.getElementById('home-page').addEventListener('click', async (e) => {
+    const regenBtn = e.target.closest('[data-action="regen-report"]');
+    if (regenBtn) {
+      e.stopPropagation();
+      showToast('正在重新生成报告...');
+      try {
+        const { listReports } = await import('./db.js?v=20260701f');
+        const all = await listReports();
+        const rpt = all.find(r => r.id === regenBtn.dataset.id);
+        if (!rpt) { showToast('报告数据已丢失'); return; }
+
+        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260701f');
+        const { getTemplate } = await import('../templates/templates.js');
+        const tpl = getTemplate(rpt.type);
+        loadTemplate(tpl);
+        const blob = await generateDocx(rpt.headerInfo, rpt.items);
+
+        const fileName = `${tpl.name}_${rpt.headerInfo.date || getTodayStr()}.docx`;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = fileName;
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('报告已重新下载');
+      } catch (err) {
+        console.error('重新生成失败:', err);
+        showToast('重新生成失败，请重试');
+      }
+      return;
+    }
+    const delReportBtn = e.target.closest('[data-action="del-report"]');
+    if (delReportBtn) {
+      e.stopPropagation();
+      const rptId = delReportBtn.dataset.id;
+      import('./db.js?v=20260701f').then(async ({ deleteReport, listDrafts }) => {
+        await deleteReport(rptId);
+        const d = await listDrafts();
+        renderHomePage({ drafts: d, onSelectType });
+        showToast('报告记录已删除');
+      });
+      return;
+    }
+  });
+
   // 设置栏点击 → 弹出设置面板
   const presetsBar = document.getElementById('presets-bar');
   if (presetsBar) {
@@ -371,9 +466,14 @@ function renderHomePage({ presets, drafts, onSelectType }) {
   setTimeout(() => {
     const importBtn = document.getElementById('import-template-btn');
     if (importBtn) {
-      importBtn.onclick = () => showImportPanel({ onSelectType, onBack: () => {
+      importBtn.onclick = () => showImportPanel({ onSelectType, onBack: (jumpToTemplateId) => {
         import('./db.js?v=20260701f').then(({ listDrafts }) => {
-          listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
+          listDrafts().then(d => {
+            renderHomePage({ drafts: d, onSelectType });
+            if (jumpToTemplateId) {
+              setTimeout(() => onSelectType(jumpToTemplateId), 300);
+            }
+          });
         });
       }});
     }
@@ -486,13 +586,13 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
         <div class="photo-slot ${beforePhoto ? 'has-photo' : ''}" id="slot-before" style="position:relative;">
           ${beforePhoto
             ? `<img src="${beforePhoto}" alt="${photoLabels.before}"><div style="position:absolute;bottom:4px;left:4px;font-size:10px;background:rgba(0,0,0,0.6);color:#fff;padding:2px 6px;border-radius:4px;">${photoLabels.before} ✓</div><button class="slot-edit-btn" data-slot="slot-before">✨ 修图</button>`
-            : `<span class="slot-icon">🖼️</span><span class="slot-label">${photoLabels.before}照片</span>`}
+            : `<span class="slot-icon">🖼️</span><span class="slot-label">${photoLabels.before}</span>`}
           <button class="slot-camera-btn" data-slot="slot-before" style="position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,0.5);color:#fff;font-size:16px;line-height:32px;text-align:center;cursor:pointer;padding:0;z-index:5;">📷</button>
         </div>
         <div class="photo-slot ${afterPhoto ? 'has-photo' : ''}" id="slot-after" style="position:relative;">
           ${afterPhoto
             ? `<img src="${afterPhoto}" alt="${photoLabels.after}"><div style="position:absolute;bottom:4px;left:4px;font-size:10px;background:rgba(0,0,0,0.6);color:#fff;padding:2px 6px;border-radius:4px;">${photoLabels.after} ✓</div><button class="slot-edit-btn" data-slot="slot-after">✨ 修图</button>`
-            : `<span class="slot-icon">🖼️</span><span class="slot-label">${photoLabels.after}照片<br><small>(选填，上传=已整改)</small></span>`}
+            : `<span class="slot-icon">🖼️</span><span class="slot-label">${photoLabels.after}<br><small>(选填，上传=已整改)</small></span>`}
           <button class="slot-camera-btn" data-slot="slot-after" style="position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,0.5);color:#fff;font-size:16px;line-height:32px;text-align:center;cursor:pointer;padding:0;z-index:5;">📷</button>
         </div>
       </div>
@@ -502,7 +602,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
           <span>${descLabel}</span>
           <button class="btn btn-purple btn-sm" id="optimize-btn-inline" ${!desc.trim() ? 'disabled' : ''} style="${!desc.trim() ? 'opacity:0.5;' : ''}">✨ AI润色</button>
         </label>
-        <textarea class="form-input" id="item-desc" placeholder="点击下方按钮语音输入或直接打字...">${escapeHtml(desc)}</textarea>
+        <textarea class="form-input" id="item-desc" placeholder="例如：灭火器过期未更换，存在火灾隐患">${escapeHtml(desc)}</textarea>
         ${renderHistoryTags('optimize_history')}
       </div>
 
@@ -1021,7 +1121,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
 
 // ---------- 生成确认页 ----------
 
-function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, onEditDate, onEditInspectionDate, onToggleHalfMonth }) {
+function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, onEditDate, onEditInspectionDate, onToggleHalfMonth, preTitle, preOverview }) {
   const typeInfo = getTypeInfo();
   const typeName = (typeInfo[reportType] || {}).name || reportType;
   const h = headerInfo;
@@ -1072,6 +1172,14 @@ function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, 
         </div>
       </div>
 
+      <div style="margin-top:16px;background:#fafafa;border-radius:8px;padding:12px;">
+        <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">✏️ 报告概述（可修改）</h3>
+        <label style="font-size:11px;color:#999;">标题</label>
+        <input type="text" id="overview-title" value="${escapeHtml(preTitle || '')}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;margin-bottom:8px;box-sizing:border-box;">
+        <label style="font-size:11px;color:#999;">概述文字</label>
+        <textarea id="overview-text" rows="3" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;">${escapeHtml(preOverview || '')}</textarea>
+      </div>
+
       <div style="margin-top:16px;">
         <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">📋 报告预览（${items.length}项）</h3>
         ${items.map((item, i) => `
@@ -1090,8 +1198,16 @@ function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, 
   `;
 
   document.getElementById('generate-back').onclick = onBack;
-  document.getElementById('download-btn').onclick = () => onConfirm('download');
-  document.getElementById('share-btn').onclick = () => onConfirm('share');
+  document.getElementById('download-btn').onclick = () => {
+    const editedTitle = document.getElementById('overview-title')?.value || '';
+    const editedOverview = document.getElementById('overview-text')?.value || '';
+    onConfirm('download', editedTitle, editedOverview);
+  };
+  document.getElementById('share-btn').onclick = () => {
+    const editedTitle = document.getElementById('overview-title')?.value || '';
+    const editedOverview = document.getElementById('overview-text')?.value || '';
+    onConfirm('share', editedTitle, editedOverview);
+  };
 
   document.getElementById('sig-date').addEventListener('change', (e) => {
     const newDate = e.target.value;
@@ -1451,8 +1567,15 @@ function showTemplateConfirm(parseResult, { onBack }) {
     clearTypeInfoCache();
 
     document.body.removeChild(overlay);
-    showToast(`模板"${template.name}"导入成功`);
-    onBack();
+    // 询问是否立即使用
+    showConfirmDialog({
+      title: '✅ 模板已就绪',
+      message: `"${template.name}"导入成功！要现在开始创建报告吗？`,
+      confirmText: '🚀 开始使用',
+      cancelText: '返回首页',
+      onConfirm: () => onBack(record.id),
+      onCancel: () => onBack(),
+    });
   };
 
   // AI 识别按钮

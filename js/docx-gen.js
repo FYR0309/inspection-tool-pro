@@ -359,7 +359,7 @@ function buildOverview(header, totalItems, completedItems, unfinishedItems) {
         overviewText = `${placeholderVars.checkDate1}公司现场检查小组对我车间进行现场检查，提出${totalItems}个整改项，已整改完成${completedItems}项，未完成${unfinishedItems}项，附整改前后对比照片。`;
         break;
       default:
-        overviewText = `本次检查共发现${totalItems}个问题，其中已整改完成${completedItems}项，未完成整改${unfinishedItems}项。`;
+        overviewText = `本次共检查出${totalItems}项问题，已完成整改${completedItems}项，剩余${unfinishedItems}项待跟进。`;
     }
   }
 
@@ -368,7 +368,7 @@ function buildOverview(header, totalItems, completedItems, unfinishedItems) {
 
 // ---------- 主函数 ----------
 
-async function generateDocx(header, items) {
+async function generateDocx(header, items, customOverview = null) {
   const tmpl = t();
   const { company, department, date: sigDate } = header;
 
@@ -378,8 +378,10 @@ async function generateDocx(header, items) {
 
   const sigDateObj = sigDate ? new Date(sigDate) : new Date();
 
-  // 生成标题和概述文字
-  const { titleText, overviewText } = buildOverview(header, totalItems, completedItems, unfinishedItems);
+  // 生成标题和概述文字（用户可覆盖）
+  const built = buildOverview(header, totalItems, completedItems, unfinishedItems);
+  const titleText = customOverview?.titleText || built.titleText;
+  const overviewText = customOverview?.overviewText || built.overviewText;
 
   // --- 构建表格 ---
   const rows = [headerRow()];
@@ -494,4 +496,4 @@ async function generateDocx(header, items) {
   return await Packer.toBlob(doc);
 }
 
-export { generateDocx, loadTemplate, pickWorkday, formatDate };
+export { generateDocx, loadTemplate, buildOverview, pickWorkday, formatDate };
