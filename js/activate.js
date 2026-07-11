@@ -27,6 +27,8 @@ const VALID_HASHES = [
   '5c1018e11d8a5bd35cbcada8c2125ec1973d228e249551cbd344977f16f01fc8',
   'e2fed6581ca26c0323b23e80fb7fe291aede3f6e14d0147ac11026debd297ae8',
   '9a372ca5e47dd3160629ce506c51985f5af3c0550caf141261aa729a446b152c',
+  // 开发者专用（激活码 RTHX-DEV0-DEV0）
+  'b33ded1ff363aa09b05d4d0636b8a41e54da3f5ec99c5216e34f89e88400c99a',
 ];
 
 // ---------- 常量 ----------
@@ -130,8 +132,15 @@ async function validateCode(input) {
     return { valid: false, error: '激活码格式不正确' };
   }
 
+  // 检查 Web Crypto API 可用性
+  if (!crypto || !crypto.subtle) {
+    console.error('[激活] crypto.subtle 不可用，可能需要 HTTPS 环境');
+    return { valid: false, error: '安全环境不可用，请使用 HTTPS 访问' };
+  }
+
   // SHA-256 哈希比对
   const hash = await sha256(normalized);
+  console.log('[激活] 验证码:', normalized, 'hash:', hash.substring(0, 16) + '...');
   if (VALID_HASHES.includes(hash)) {
     return { valid: true };
   }

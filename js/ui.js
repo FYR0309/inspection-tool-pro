@@ -1,9 +1,9 @@
 // ui.js — 所有页面视图的渲染函数
 
-import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711b';
-import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711b';
+import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711c';
+import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711c';
 import { getTemplate, listTemplates, refreshCustomTemplate, removeCustomTemplate, isBuiltinTemplate } from '../templates/templates.js';
-import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, FREE_MONTHLY_LIMIT } from './activate.js?v=20260711b';
+import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, FREE_MONTHLY_LIMIT } from './activate.js?v=20260711c';
 
 const pageContainer = document.getElementById('page-container');
 
@@ -212,7 +212,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   // 加载报告历史
   let reports = [];
   try {
-    const { listReports } = await import('./db.js?v=20260711b');
+    const { listReports } = await import('./db.js?v=20260711c');
     reports = await listReports();
   } catch (e) { /* ignore */ }
 
@@ -329,7 +329,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
         label: '撤回',
         onUndo: () => {
           // 恢复：重新读取（草稿还在 IndexedDB 中）
-          import('./db.js?v=20260711b').then(({ listDrafts }) => {
+          import('./db.js?v=20260711c').then(({ listDrafts }) => {
             listDrafts().then(newDrafts => {
               renderHomePage({ drafts: newDrafts, onSelectType });
             });
@@ -337,7 +337,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
         },
         onTimeout: () => {
           // 超时后真正删除
-          import('./db.js?v=20260711b').then(({ deleteDraft }) => {
+          import('./db.js?v=20260711c').then(({ deleteDraft }) => {
             deleteDraft(draftId).catch(() => {});
           });
         },
@@ -385,7 +385,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       const tplId = card.dataset.id;
       showTemplateEditor({ templateId: tplId, onBack: () => {
-        import('./db.js?v=20260711b').then(({ listDrafts }) => {
+        import('./db.js?v=20260711c').then(({ listDrafts }) => {
           listDrafts().then(newDrafts => renderHomePage({ drafts: newDrafts, onSelectType }));
         });
       }});
@@ -396,7 +396,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (action === 'export-template') {
       e.stopPropagation();
       const tplId = card.dataset.id;
-      import('./db.js?v=20260711b').then(({ getCustomTemplate, exportTemplateAsFile }) => {
+      import('./db.js?v=20260711c').then(({ getCustomTemplate, exportTemplateAsFile }) => {
         getCustomTemplate(tplId).then(record => {
           if (record) exportTemplateAsFile(record);
         });
@@ -408,7 +408,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (action === 'delete-template') {
       e.stopPropagation();
       const tplId = card.dataset.id;
-      import('./db.js?v=20260711b').then(({ deleteTemplate }) => {
+      import('./db.js?v=20260711c').then(({ deleteTemplate }) => {
         deleteTemplate(tplId).then(() => {
           // 同步删除原始 .docx 存储
           import('./docx-template-cloner.js').then(({ deleteOriginalTemplate }) => {
@@ -416,7 +416,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
           }).catch(() => {});
           removeCustomTemplate(tplId);
           clearTypeInfoCache();
-          import('./db.js?v=20260711b').then(({ listDrafts }) => {
+          import('./db.js?v=20260711c').then(({ listDrafts }) => {
             listDrafts().then(newDrafts => {
               renderHomePage({ drafts: newDrafts, onSelectType });
             });
@@ -433,7 +433,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (delReportBtn) {
       e.stopPropagation();
       const rptId = delReportBtn.dataset.id;
-      import('./db.js?v=20260711b').then(async ({ deleteReport, listDrafts }) => {
+      import('./db.js?v=20260711c').then(async ({ deleteReport, listDrafts }) => {
         await deleteReport(rptId);
         const d = await listDrafts();
         renderHomePage({ drafts: d, onSelectType });
@@ -446,12 +446,12 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       showToast('正在重新生成报告...');
       try {
-        const { listReports } = await import('./db.js?v=20260711b');
+        const { listReports } = await import('./db.js?v=20260711c');
         const all = await listReports();
         const rpt = all.find(r => r.id === regenBtn.dataset.id);
         if (!rpt) { showToast('报告数据已丢失'); return; }
 
-        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711b');
+        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711c');
         const { getTemplate } = await import('../templates/templates.js');
         const tpl = getTemplate(rpt.type);
         loadTemplate(tpl);
@@ -478,7 +478,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   if (presetsBar) {
     presetsBar.onclick = () => {
       showSettingsPanel({ onSave: () => {
-        import('./db.js?v=20260711b').then(({ listDrafts }) => {
+        import('./db.js?v=20260711c').then(({ listDrafts }) => {
           listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
         });
       }});
@@ -490,7 +490,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     const importBtn = document.getElementById('import-template-btn');
     if (importBtn) {
       importBtn.onclick = () => showImportPanel({ onSelectType, onBack: (jumpToTemplateId) => {
-        import('./db.js?v=20260711b').then(({ listDrafts }) => {
+        import('./db.js?v=20260711c').then(({ listDrafts }) => {
           listDrafts().then(d => {
             renderHomePage({ drafts: d, onSelectType });
             if (jumpToTemplateId) {
@@ -760,7 +760,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
     const voiceText = document.getElementById('voice-text');
     statusDiv.style.display = 'block';
     voiceText.textContent = '正在聆听...';
-    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711b');
+    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711c');
     window._voiceRecognition = startVoiceRecognition({
       onResult: (text) => {
         voiceText.textContent = text;
@@ -1049,7 +1049,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
     editVoiceStatus.style.display = 'block';
     editVoiceText.textContent = '正在聆听...';
     try {
-      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711b');
+      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711c');
       startVoiceRecognition({
         onResult: (text) => {
           promptInput.value = text;
@@ -1458,7 +1458,7 @@ function showImportPanel({ onSelectType, onBack }) {
         const tpl = JSON.parse(text);
         if (!tpl.id || !tpl.columns) throw new Error('JSON 格式不正确：缺少 id 或 columns');
 
-        const { saveTemplate } = await import('./db.js?v=20260711b');
+        const { saveTemplate } = await import('./db.js?v=20260711c');
         const record = await saveTemplate({ ...tpl, source: 'imported', isBuiltin: false });
         refreshCustomTemplate(record.id, tpl);
         clearTypeInfoCache();
@@ -1486,7 +1486,7 @@ function showImportPanel({ onSelectType, onBack }) {
           setTimeout(() => {
             document.body.removeChild(overlay);
             showManualBuilder({ onSave: async (tpl) => {
-              const { saveTemplate } = await import('./db.js?v=20260711b');
+              const { saveTemplate } = await import('./db.js?v=20260711c');
               const record = await saveTemplate({ ...tpl, source: 'manual', isBuiltin: false });
               refreshCustomTemplate(record.id, tpl);
               clearTypeInfoCache();
@@ -1615,7 +1615,7 @@ function showTemplateConfirm(parseResult, { onBack }) {
       else if (sel.value === 'remark') template.columns[i].field = '_remark';
     });
 
-    const { saveTemplate } = await import('./db.js?v=20260711b');
+    const { saveTemplate } = await import('./db.js?v=20260711c');
     const record = await saveTemplate({ ...template, source: 'docx-imported', isBuiltin: false });
     refreshCustomTemplate(record.id, template);
     clearTypeInfoCache();
@@ -1818,7 +1818,7 @@ function showTemplateEditor({ templateId, onBack }) {
     newTpl.source = 'customized';
     newTpl.version = 1;
 
-    const { saveTemplate } = await import('./db.js?v=20260711b');
+    const { saveTemplate } = await import('./db.js?v=20260711c');
     const record = await saveTemplate({ ...newTpl });
     refreshCustomTemplate(record.id, newTpl);
     clearTypeInfoCache();
@@ -1901,7 +1901,7 @@ function replacePreview(template, vars) {
 // ---------- 检查清单面板 ----------
 
 async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
-  const checklists = await (await import('./db.js?v=20260711b')).listChecklists().catch(() => []);
+  const checklists = await (await import('./db.js?v=20260711c')).listChecklists().catch(() => []);
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
@@ -1950,7 +1950,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
       if (!name) { showToast('请输入清单名称'); return; }
       const descItems = items.filter(i => i.description).map(i => ({ description: i.description }));
       if (descItems.length === 0) { showToast('没有可保存的描述项'); return; }
-      await (await import('./db.js?v=20260711b')).saveChecklist(name, descItems);
+      await (await import('./db.js?v=20260711c')).saveChecklist(name, descItems);
       document.body.removeChild(overlay);
       showToast(`清单"${name}"已保存`);
     };
@@ -1971,7 +1971,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
   overlay.querySelectorAll('[data-action="del-checklist"]').forEach(el => {
     el.onclick = async (e) => {
       e.stopPropagation();
-      await (await import('./db.js?v=20260711b')).deleteChecklist(el.dataset.id);
+      await (await import('./db.js?v=20260711c')).deleteChecklist(el.dataset.id);
       document.body.removeChild(overlay);
       showToast('清单已删除');
     };
@@ -2077,8 +2077,13 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
   });
 
   // 激活按钮
+  if (!activateBtn) {
+    console.error('[showUpgradePanel] 激活按钮未找到！');
+    return;
+  }
   activateBtn.onclick = async () => {
     const code = codeInput.value.trim();
+    console.log('[激活] 点击激活，code:', code, 'length:', code.length);
     if (!code || code.length < 12) {
       errorDiv.textContent = '请输入完整的激活码';
       errorDiv.style.display = 'block';
@@ -2091,7 +2096,9 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
     loadingDiv.style.display = 'block';
 
     try {
+      console.log('[激活] 调用 activateCode...');
       const result = await onActivate(code);
+      console.log('[激活] result:', JSON.stringify(result));
       if (result.success) {
         document.body.removeChild(overlay);
         showToast('✅ 激活成功！已升级为Pro版');
@@ -2100,7 +2107,8 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
         errorDiv.style.display = 'block';
       }
     } catch (e) {
-      errorDiv.textContent = '网络异常，请重试';
+      console.error('[激活] 异常:', e);
+      errorDiv.textContent = '验证失败：' + (e.message || '未知错误');
       errorDiv.style.display = 'block';
     } finally {
       activateBtn.disabled = false;
