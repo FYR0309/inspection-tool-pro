@@ -22,14 +22,33 @@ function generateOrderId() {
   return `ORDER-${ts}-${rand}`;
 }
 
+function isWechatBrowser() {
+  return /MicroMessenger/i.test(navigator.userAgent);
+}
+
+function openWechat() {
+  // 微信内置浏览器不需要跳转
+  if (isWechatBrowser()) return;
+  // 用 location.href 比 window.open 更可靠，不会被拦截
+  setTimeout(() => {
+    try {
+      const prev = window.location.href;
+      window.location.href = 'weixin://';
+      // 如果 1.5 秒后还在原页面，说明没装微信或跳转失败，恢复
+      setTimeout(() => {
+        if (window.location.href === 'weixin://' || window.location.href === prev) {
+          // 没跳走，不强制恢复，用户可能在看 toast
+        }
+      }, 1500);
+    } catch (e) { /* ignore */ }
+  }, 500);
+}
+
 function copyWechatAndOpen(orderId) {
   // 只复制微信号，方便用户粘贴搜索
   navigator.clipboard.writeText(DEV_WECHAT).then(() => {
     showToast(`微信号已复制：${DEV_WECHAT}，添加好友后发送订单号 ${orderId}`, 4000);
-    // 尝试跳转微信
-    setTimeout(() => {
-      try { window.open('weixin://', '_blank'); } catch (e) { /* ignore */ }
-    }, 400);
+    openWechat();
   }).catch(() => {
     showToast(`请添加微信 ${DEV_WECHAT}，发送订单号 ${orderId}`, 4000);
   });
@@ -2483,9 +2502,7 @@ function showFeedbackModal() {
     const context = `[意见反馈] ${text} (Pro版 v2.7, ${ua}, 本月已用${usage.used}次)`;
     navigator.clipboard.writeText(context).then(() => {
       showToast(`已复制，请到微信粘贴发送给 ${DEV_WECHAT}`, 3000);
-      setTimeout(() => {
-        try { window.open('weixin://', '_blank'); } catch (e) { /* ignore */ }
-      }, 400);
+      openWechat();
     }).catch(() => {
       showToast(`请添加微信 ${DEV_WECHAT} 发送反馈`, 3000);
     });
