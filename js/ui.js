@@ -1,10 +1,10 @@
 // ui.js — 所有页面视图的渲染函数
 
-import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711h';
-import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711h';
+import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711i';
+import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711i';
 import { getTemplate, listTemplates, refreshCustomTemplate, removeCustomTemplate, isBuiltinTemplate } from '../templates/templates.js';
-import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, getImageEditUsageThisMonth, incrementImageEditUsage, getPolishUsageThisMonth, incrementPolishUsage, canPolishText, TESTING_MODE, FREE_MONTHLY_LIMIT, IMAGE_EDIT_MONTHLY_LIMIT, IMAGE_EDIT_TESTING_LIMIT, POLISH_MONTHLY_LIMIT } from './activate.js?v=20260711h';
-import { showToast, registerOverlay, closeAllOverlays, showConfirm, escapeHtml } from './utils.js?v=20260711h';
+import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, getImageEditUsageThisMonth, incrementImageEditUsage, getPolishUsageThisMonth, incrementPolishUsage, canPolishText, TESTING_MODE, FREE_MONTHLY_LIMIT, IMAGE_EDIT_MONTHLY_LIMIT, IMAGE_EDIT_TESTING_LIMIT, POLISH_MONTHLY_LIMIT } from './activate.js?v=20260711i';
+import { showToast, registerOverlay, closeAllOverlays, showConfirm, escapeHtml } from './utils.js?v=20260711i';
 
 const pageContainer = document.getElementById('page-container');
 
@@ -217,7 +217,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   // 加载报告历史
   let reports = [];
   try {
-    const { listReports } = await import('./db.js?v=20260711h');
+    const { listReports } = await import('./db.js?v=20260711i');
     reports = await listReports();
   } catch (e) { /* ignore */ }
 
@@ -337,14 +337,14 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
           showToast('草稿已删除', 5000, {
             label: '撤回',
             onUndo: () => {
-              import('./db.js?v=20260711h').then(({ listDrafts }) => {
+              import('./db.js?v=20260711i').then(({ listDrafts }) => {
                 listDrafts().then(newDrafts => {
                   renderHomePage({ drafts: newDrafts, onSelectType });
                 });
               });
             },
             onTimeout: () => {
-              import('./db.js?v=20260711h').then(({ deleteDraft }) => {
+              import('./db.js?v=20260711i').then(({ deleteDraft }) => {
                 deleteDraft(draftId).catch(() => {});
               });
             },
@@ -394,7 +394,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       const tplId = card.dataset.id;
       showTemplateEditor({ templateId: tplId, onBack: () => {
-        import('./db.js?v=20260711h').then(({ listDrafts }) => {
+        import('./db.js?v=20260711i').then(({ listDrafts }) => {
           listDrafts().then(newDrafts => renderHomePage({ drafts: newDrafts, onSelectType }));
         });
       }});
@@ -405,7 +405,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (action === 'delete-template') {
       e.stopPropagation();
       const tplId = card.dataset.id;
-      import('./db.js?v=20260711h').then(({ deleteTemplate }) => {
+      import('./db.js?v=20260711i').then(({ deleteTemplate }) => {
         deleteTemplate(tplId).then(() => {
           // 同步删除原始 .docx 存储
           import('./docx-template-cloner.js').then(({ deleteOriginalTemplate }) => {
@@ -413,7 +413,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
           }).catch(() => {});
           removeCustomTemplate(tplId);
           clearTypeInfoCache();
-          import('./db.js?v=20260711h').then(({ listDrafts }) => {
+          import('./db.js?v=20260711i').then(({ listDrafts }) => {
             listDrafts().then(newDrafts => {
               renderHomePage({ drafts: newDrafts, onSelectType });
             });
@@ -430,7 +430,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (delReportBtn) {
       e.stopPropagation();
       const rptId = delReportBtn.dataset.id;
-      import('./db.js?v=20260711h').then(async ({ deleteReport, listDrafts }) => {
+      import('./db.js?v=20260711i').then(async ({ deleteReport, listDrafts }) => {
         await deleteReport(rptId);
         const d = await listDrafts();
         renderHomePage({ drafts: d, onSelectType });
@@ -443,12 +443,12 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       showToast('正在重新生成报告...');
       try {
-        const { listReports } = await import('./db.js?v=20260711h');
+        const { listReports } = await import('./db.js?v=20260711i');
         const all = await listReports();
         const rpt = all.find(r => r.id === regenBtn.dataset.id);
         if (!rpt) { showToast('报告数据已丢失'); return; }
 
-        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711h');
+        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711i');
         const { getTemplate } = await import('../templates/templates.js');
         const tpl = getTemplate(rpt.type);
         loadTemplate(tpl);
@@ -475,7 +475,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   if (presetsBar) {
     presetsBar.onclick = () => {
       showSettingsPanel({ onSave: () => {
-        import('./db.js?v=20260711h').then(({ listDrafts }) => {
+        import('./db.js?v=20260711i').then(({ listDrafts }) => {
           listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
         });
       }});
@@ -500,7 +500,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     const importBtn = document.getElementById('import-template-btn');
     if (importBtn) {
       importBtn.onclick = () => showImportPanel({ onSelectType, onBack: (jumpToTemplateId) => {
-        import('./db.js?v=20260711h').then(({ listDrafts }) => {
+        import('./db.js?v=20260711i').then(({ listDrafts }) => {
           listDrafts().then(d => {
             renderHomePage({ drafts: d, onSelectType });
             if (jumpToTemplateId) {
@@ -816,7 +816,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
     const voiceText = document.getElementById('voice-text');
     statusDiv.style.display = 'block';
     voiceText.textContent = '正在聆听...';
-    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711h');
+    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711i');
     window._voiceRecognition = startVoiceRecognition({
       onResult: (text) => {
         voiceText.textContent = text;
@@ -1106,7 +1106,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
     editVoiceStatus.style.display = 'block';
     editVoiceText.textContent = '正在聆听...';
     try {
-      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711h');
+      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711i');
       startVoiceRecognition({
         onResult: (text) => {
           promptInput.value = text;
@@ -1530,7 +1530,7 @@ function showImportPanel({ onSelectType, onBack }) {
         const tpl = JSON.parse(text);
         if (!tpl.id || !tpl.columns) throw new Error('JSON 格式不正确：缺少 id 或 columns');
 
-        const { saveTemplate } = await import('./db.js?v=20260711h');
+        const { saveTemplate } = await import('./db.js?v=20260711i');
         const record = await saveTemplate({ ...tpl, source: 'imported', isBuiltin: false });
         refreshCustomTemplate(record.id, tpl);
         clearTypeInfoCache();
@@ -1558,7 +1558,7 @@ function showImportPanel({ onSelectType, onBack }) {
           setTimeout(() => {
             document.body.removeChild(overlay);
             showManualBuilder({ onSave: async (tpl) => {
-              const { saveTemplate } = await import('./db.js?v=20260711h');
+              const { saveTemplate } = await import('./db.js?v=20260711i');
               const record = await saveTemplate({ ...tpl, source: 'manual', isBuiltin: false });
               refreshCustomTemplate(record.id, tpl);
               clearTypeInfoCache();
@@ -1673,7 +1673,7 @@ function showTemplateConfirm(parseResult, { onBack }) {
       else if (sel.value === 'remark') template.columns[i].field = '_remark';
     });
 
-    const { saveTemplate } = await import('./db.js?v=20260711h');
+    const { saveTemplate } = await import('./db.js?v=20260711i');
     const record = await saveTemplate({ ...template, source: 'docx-imported', isBuiltin: false });
     refreshCustomTemplate(record.id, template);
     clearTypeInfoCache();
@@ -1875,7 +1875,7 @@ function showTemplateEditor({ templateId, onBack }) {
 
   // 导出模板
   overlay.querySelector('#tpl-edit-export').onclick = async () => {
-    const { getCustomTemplate, exportTemplateAsFile } = await import('./db.js?v=20260711h');
+    const { getCustomTemplate, exportTemplateAsFile } = await import('./db.js?v=20260711i');
     if (isBuiltin) {
       // 内置模板直接导出当前编辑的 JSON
       exportTemplateAsFile({ id: tpl.id, data: tpl });
@@ -1897,7 +1897,7 @@ function showTemplateEditor({ templateId, onBack }) {
     newTpl.source = 'customized';
     newTpl.version = 1;
 
-    const { saveTemplate } = await import('./db.js?v=20260711h');
+    const { saveTemplate } = await import('./db.js?v=20260711i');
     const record = await saveTemplate({ ...newTpl });
     refreshCustomTemplate(record.id, newTpl);
     clearTypeInfoCache();
@@ -1993,7 +1993,7 @@ function replacePreview(template, vars) {
 // ---------- 检查清单面板 ----------
 
 async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
-  const checklists = await (await import('./db.js?v=20260711h')).listChecklists().catch(() => []);
+  const checklists = await (await import('./db.js?v=20260711i')).listChecklists().catch(() => []);
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
@@ -2042,7 +2042,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
       if (!name) { showToast('请输入清单名称'); return; }
       const descItems = items.filter(i => i.description).map(i => ({ description: i.description }));
       if (descItems.length === 0) { showToast('没有可保存的描述项'); return; }
-      await (await import('./db.js?v=20260711h')).saveChecklist(name, descItems);
+      await (await import('./db.js?v=20260711i')).saveChecklist(name, descItems);
       document.body.removeChild(overlay);
       showToast(`清单"${name}"已保存`);
     };
@@ -2063,7 +2063,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
   overlay.querySelectorAll('[data-action="del-checklist"]').forEach(el => {
     el.onclick = async (e) => {
       e.stopPropagation();
-      await (await import('./db.js?v=20260711h')).deleteChecklist(el.dataset.id);
+      await (await import('./db.js?v=20260711i')).deleteChecklist(el.dataset.id);
       document.body.removeChild(overlay);
       showToast('清单已删除');
     };
@@ -2347,7 +2347,7 @@ function showSettingsPanel({ onSave }) {
   // 导出数据
   overlay.querySelector('#settings-export-btn').onclick = async () => {
     try {
-      const { exportAllDataAsFile } = await import('./db.js?v=20260711h');
+      const { exportAllDataAsFile } = await import('./db.js?v=20260711i');
       await exportAllDataAsFile();
       showToast('数据已导出，请保存好备份文件');
     } catch (e) {
@@ -2380,7 +2380,7 @@ function showSettingsPanel({ onSave }) {
       if (!file) return;
       showToast('正在导入...');
       try {
-        const { importAllDataFromFile } = await import('./db.js?v=20260711h');
+        const { importAllDataFromFile } = await import('./db.js?v=20260711i');
         const result = await importAllDataFromFile(file);
         document.body.removeChild(overlay);
         showToast(`导入完成：${result.drafts}个草稿、${result.templates}个模板、${result.checklists}个清单、${result.reports}条报告`);
