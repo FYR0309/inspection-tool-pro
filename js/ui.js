@@ -22,15 +22,16 @@ function generateOrderId() {
   return `ORDER-${ts}-${rand}`;
 }
 
-function copyAndOpenWechat(text) {
-  const fullText = `${text}\n微信号：${DEV_WECHAT}`;
-  navigator.clipboard.writeText(fullText).then(() => {
-    showToast(`已复制，请到微信添加 ${DEV_WECHAT} 发送`, 3000);
+function copyWechatAndOpen(orderId) {
+  // 只复制微信号，方便用户粘贴搜索
+  navigator.clipboard.writeText(DEV_WECHAT).then(() => {
+    showToast(`微信号已复制：${DEV_WECHAT}，添加好友后发送订单号 ${orderId}`, 4000);
+    // 尝试跳转微信
     setTimeout(() => {
       try { window.open('weixin://', '_blank'); } catch (e) { /* ignore */ }
-    }, 600);
+    }, 400);
   }).catch(() => {
-    showToast(`请添加微信 ${DEV_WECHAT} 发送`, 3000);
+    showToast(`请添加微信 ${DEV_WECHAT}，发送订单号 ${orderId}`, 4000);
   });
 }
 
@@ -2219,7 +2220,7 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
   if (contactBtn) {
     contactBtn.onclick = () => {
       const orderId = generateOrderId();
-      copyAndOpenWechat(`已付款，订单号：${orderId}，请发激活码`);
+      copyWechatAndOpen(orderId);
     };
   }
 
@@ -2480,7 +2481,14 @@ function showFeedbackModal() {
     const text = overlay.querySelector('#feedback-text').value.trim();
     if (!text) { showToast('请填写反馈内容'); return; }
     const context = `[意见反馈] ${text} (Pro版 v2.7, ${ua}, 本月已用${usage.used}次)`;
-    copyAndOpenWechat(context);
+    navigator.clipboard.writeText(context).then(() => {
+      showToast(`已复制，请到微信粘贴发送给 ${DEV_WECHAT}`, 3000);
+      setTimeout(() => {
+        try { window.open('weixin://', '_blank'); } catch (e) { /* ignore */ }
+      }, 400);
+    }).catch(() => {
+      showToast(`请添加微信 ${DEV_WECHAT} 发送反馈`, 3000);
+    });
     close();
   };
 
