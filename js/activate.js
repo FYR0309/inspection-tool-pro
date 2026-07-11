@@ -36,6 +36,7 @@ const VALID_HASHES = [
 const FREE_MONTHLY_LIMIT = 5;
 const ACTIVATION_KEY = '_iap_v';  // 故意用不明显的 key 名
 const GRACE_LIMIT = 1;  // 免费版超限后可额外生成 1 份（软性限制）
+const IMAGE_EDIT_MONTHLY_LIMIT = 20;  // Pro 版每月 AI 修图次数上限
 
 // 开发者专用哈希（激活码 RTHX-DEV0-DEV0）
 const DEV_HASH = 'b33ded1ff363aa09b05d4d0636b8a41e54da3f5ec99c5216e34f89e88400c99a';
@@ -216,10 +217,39 @@ function clearUsage() {
   writeActivationData(data);
 }
 
+/** 获取本月修图用量 */
+function getImageEditUsageThisMonth() {
+  const data = readActivationData();
+  const monthKey = getMonthKey() + '_img';
+  const used = (data && data.usage) ? (data.usage[monthKey] || 0) : 0;
+  return {
+    used,
+    limit: IMAGE_EDIT_MONTHLY_LIMIT,
+    remaining: Math.max(0, IMAGE_EDIT_MONTHLY_LIMIT - used),
+  };
+}
+
+/** 递增本月修图用量，返回是否还能继续 */
+function incrementImageEditUsage() {
+  const data = readActivationData() || {};
+  const monthKey = getMonthKey() + '_img';
+  if (!data.usage) data.usage = {};
+  data.usage[monthKey] = (data.usage[monthKey] || 0) + 1;
+  writeActivationData(data);
+  return data.usage[monthKey] < IMAGE_EDIT_MONTHLY_LIMIT;
+}
+
 /** 检查功能是否可用 */
 function isFeatureAllowed(feature) {
   const activation = checkActivation();
-  if (activation.activated) return true;  // Pro 版 + 开发者全开放
+  if (activation.activated) {
+    // Pro 版：修图有月限
+    if (feature === 'image-edit') {
+      const usage = getImageEditUsageThisMonth();
+      return usage.remaining > 0;
+    }
+    return true;  // Pro 版其他功能全开放
+  }
 
   // 免费版功能限制
   switch (feature) {
@@ -258,9 +288,12 @@ export {
   activateCode,
   getUsageThisMonth,
   incrementUsage,
+  getImageEditUsageThisMonth,
+  incrementImageEditUsage,
   isFeatureAllowed,
   canGenerateReport,
   clearUsage,
   deactivate,
   FREE_MONTHLY_LIMIT,
+  IMAGE_EDIT_MONTHLY_LIMIT,
 };

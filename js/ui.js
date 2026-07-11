@@ -1,10 +1,10 @@
 // ui.js — 所有页面视图的渲染函数
 
-import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711f';
-import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711f';
+import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711e';
+import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711e';
 import { getTemplate, listTemplates, refreshCustomTemplate, removeCustomTemplate, isBuiltinTemplate } from '../templates/templates.js';
-import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, FREE_MONTHLY_LIMIT } from './activate.js?v=20260711f';
-import { showToast, registerOverlay, closeAllOverlays, showConfirm, escapeHtml } from './utils.js?v=20260711f';
+import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, getImageEditUsageThisMonth, incrementImageEditUsage, FREE_MONTHLY_LIMIT, IMAGE_EDIT_MONTHLY_LIMIT } from './activate.js?v=20260711e';
+import { showToast, registerOverlay, closeAllOverlays, showConfirm, escapeHtml } from './utils.js?v=20260711e';
 
 const pageContainer = document.getElementById('page-container');
 
@@ -20,15 +20,15 @@ function getPresetDepartment() {
 
 // ---------- 模板信息辅助 ----------
 
-/** 默认图标（行业 → 标签文字映射） */
+/** 默认图标（行业 → 图标映射） */
 const INDUSTRY_ICONS = {
-  '制造业': '制造',
-  '化工': '化工',
-  '建筑': '建筑',
-  '仓储': '仓储',
-  '餐饮': '餐饮',
-  '消防': '消防',
-  '电力': '电力',
+  '制造业': '🏭',
+  '化工': '🧪',
+  '建筑': '🏗️',
+  '仓储': '📦',
+  '餐饮': '🍽️',
+  '消防': '🧯',
+  '电力': '⚡',
 };
 
 /** 从模板列表构建类型信息映射（带缓存） */
@@ -45,7 +45,7 @@ function getTypeInfo() {
         industry: t.industry,
         description: t.description,
         isBuiltin: t.isBuiltin !== false,
-        icon: INDUSTRY_ICONS[t.industry] || t.industry || '通用',
+        icon: INDUSTRY_ICONS[t.industry] || '📄',
         // 简称和颜色从行业派生
         shortName: t.industry || t.name.slice(0, 4),
         color: getIndustryColor(t.industry),
@@ -56,9 +56,9 @@ function getTypeInfo() {
     // 模板加载失败时回退到硬编码默认值
     console.warn('模板列表加载失败，使用默认值:', e);
     _typeInfoCache = {
-      safety: { id: 'safety', name: '安全检查报告', industry: '制造业', description: '工厂车间安全检查，整改前后对比报告', icon: '安全', shortName: '安全', color: '#3b5998' },
-      '5s': { id: '5s', name: '现场检查报告', industry: '制造业', description: '现场管理检查通报，含签名行', icon: '现场', shortName: '5S', color: '#e07b20' },
-      company: { id: 'company', name: '公司现场检查整改报告', industry: '制造业', description: '公司检查组检查后整改', icon: '公司', shortName: '公司', color: '#5a6b8a' },
+      safety: { id: 'safety', name: '安全检查报告', industry: '制造业', description: '工厂车间安全检查，整改前后对比报告', icon: '🛡️', shortName: '安全', color: '#c0833c' },
+      '5s': { id: '5s', name: '现场检查报告', industry: '制造业', description: '现场管理检查通报，含签名行', icon: '📋', shortName: '5S', color: '#d4952b' },
+      company: { id: 'company', name: '公司现场检查整改报告', industry: '制造业', description: '公司检查组检查后整改', icon: '🏭', shortName: '公司', color: '#7b6db5' },
     };
   }
   return _typeInfoCache;
@@ -78,7 +78,7 @@ function getIndustryColor(industry) {
 function getActivationStatusHtml() {
   const activation = checkActivation();
   if (activation.activated) {
-    return '<span style="background:#3b5998;color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;font-weight:600;">PRO</span>';
+    return '<span style="color:#3d7256;font-weight:600;">🔓 Pro版</span>';
   }
   const usage = getUsageThisMonth();
   const mainRemaining = usage.remaining;
@@ -87,7 +87,7 @@ function getActivationStatusHtml() {
   if (mainRemaining > 0) text += `本月${mainRemaining}次`;
   if (graceRemaining > 0) text += `${text ? ' + ' : ''}赠送${graceRemaining}次`;
   if (!text) text = '已用完';
-  return `<span style="font-size:10px;color:var(--text-secondary);">${text}</span>`;
+  return `<span style="color:#c0833c;font-weight:600;">⚡ 免费版</span> · ${text}`;
 }
 
 function getActivationAction() {
@@ -156,7 +156,7 @@ function renderHistoryTags(key, onClick, reportType) {
   }
 
   if (!list.length) return '';
-  return `<div class="history-tags">${list.map((h, i) =>
+  return `<div class="history-tags">📝 ${list.map((h, i) =>
     `<button class="history-tag" data-history="${escapeHtml(h)}">${escapeHtml(h.length > 18 ? h.slice(0, 18) + '…' : h)}</button>`
   ).join(' ')}</div>`;
 }
@@ -170,7 +170,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   // 加载报告历史
   let reports = [];
   try {
-    const { listReports } = await import('./db.js?v=20260711f');
+    const { listReports } = await import('./db.js?v=20260711e');
     reports = await listReports();
   } catch (e) { /* ignore */ }
 
@@ -184,7 +184,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   if (drafts && drafts.length > 0) {
     draftsHtml = `
       <div style="margin-top:16px;">
-        <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">草稿箱 (${drafts.length}/6)</h3>
+        <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">📝 草稿箱 (${drafts.length}/6)</h3>
         ${drafts.map(d => {
           const info = typeInfo[d.type] || { shortName: d.type || '未知', color: '#ccc', name: d.type || '未知' };
           return `
@@ -192,9 +192,9 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
             <span style="background:${info.color};color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;flex-shrink:0;">${info.shortName}</span>
             <div style="flex:1;min-width:0;" data-action="resume" data-id="${d.id}" data-type="${d.type}">
               <div style="font-weight:600;font-size:14px;">${info.name}</div>
-              <div style="font-size:12px;opacity:0.65;">${d.data?.items?.length || 0} 条记录 · ${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</div>
+              <div style="font-size:12px;color:#999;">${d.data?.items?.length || 0} 条记录 · ${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</div>
             </div>
-            <button class="draft-delete-btn" data-action="delete-draft" data-id="${d.id}" style="background:none;border:none;font-size:18px;cursor:pointer;padding:6px 8px;color:#ccc;flex-shrink:0;" title="删除草稿">删除</button>
+            <button class="draft-delete-btn" data-action="delete-draft" data-id="${d.id}" style="background:none;border:none;font-size:18px;cursor:pointer;padding:6px 8px;color:#ccc;flex-shrink:0;" title="删除草稿">🗑️</button>
           </div>
         `}).join('')}
       </div>
@@ -203,62 +203,65 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
 
   pageContainer.innerHTML = `
     <div class="page active" id="home-page">
-      <h2 style="font-size:18px;margin-bottom:10px;letter-spacing:-0.02em;">安全检查报告</h2>
-      <div class="presets-bar" id="presets-bar" style="cursor:pointer;${!getPresetCompany() ? 'border-color:#d14343;opacity:1;' : ''}" title="点击编辑公司/部门信息（报告落款使用）">
+      <h2 style="font-size:22px;margin-bottom:4px;">安全检查报告</h2>
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:14px;">选择一个模板开始，或导入您的 Word 模板</p>
+
+	      <p style="color:#bbb;font-size:11px;margin-bottom:6px;text-align:center;">💡 支持拍照、语音输入、AI润色</p>
+      <div class="presets-bar" id="presets-bar" style="cursor:pointer;${!getPresetCompany() ? 'background:#fff3e0;border:2px solid #ff9800;border-radius:8px;padding:6px 10px;' : ''}" title="点击编辑公司/部门信息（报告落款使用）">
         ${!getPresetCompany()
-          ? `<span style="color:#d14343;font-weight:600;">请设置公司名称（报告必填）</span>`
-          : `<span style="opacity:0.65;font-size:12px;">${escapeHtml(getPresetCompany())} / ${escapeHtml(getPresetDepartment() || '未设部门')} / ${today} / ${getActivationStatusHtml()}</span>`}
+          ? `<span style="color:#e65100;font-weight:600;">⚠️ 点击设置公司名称（报告必填）</span>`
+          : `<span style="color:#999;font-size:12px;">🏢 ${escapeHtml(getPresetCompany())} · ${escapeHtml(getPresetDepartment() || '未设部门')} · ${today} · ${getActivationStatusHtml()} ✏️</span>`}
       </div>
 
       ${builtinCards.length > 0 ? `
-        <div style="font-size:11px;opacity:0.65;margin:10px 0;text-align:center;">—— 内置模板 ——</div>
+        <div style="font-size:11px;color:#999;margin:10px 0;text-align:center;">—— 📦 内置模板 ——</div>
         ${builtinCards.map(c => `
           <div class="card card-type-${c.id}" style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:11px;flex-shrink:0;opacity:0.5;min-width:28px;">${c.icon}</span>
+            <span style="font-size:28px;flex-shrink:0;">${c.icon}</span>
             <div style="flex:1;min-width:0;" data-action="select-type" data-type="${c.id}">
               <div class="card-title">${c.name}</div>
               <div class="card-desc">${c.description}</div>
             </div>
-            <button class="type-import-btn" data-action="import-file-type" data-type="${c.id}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入已有报告或照片">导入</button>
+            <button class="type-import-btn" data-action="import-file-type" data-type="${c.id}" style="background:none;border:none;font-size:22px;cursor:pointer;padding:10px;flex-shrink:0;border-radius:50%;transition:background 0.2s;" title="导入已有报告或照片，继续编辑">📥</button>
           </div>
         `).join('')}
       ` : ''}
 
       ${customCards.length > 0 ? `
-        <div style="font-size:11px;opacity:0.65;margin:16px 0 10px;text-align:center;">—— 我的模板 ——</div>
+        <div style="font-size:11px;color:#999;margin:16px 0 10px;text-align:center;">—— 📥 我的模板 ——</div>
         ${customCards.map(c => `
           <div class="card card-type-${c.id}" style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:11px;flex-shrink:0;opacity:0.5;min-width:28px;">${c.icon}</span>
+            <span style="font-size:28px;flex-shrink:0;">${c.icon}</span>
             <div style="flex:1;min-width:0;" data-action="select-type" data-type="${c.id}">
               <div class="card-title">${c.name}</div>
               <div class="card-desc">${c.description}</div>
             </div>
-            <button data-action="edit-template" data-id="${c.id}" style="background:none;border:none;font-size:18px;cursor:pointer;padding:8px;flex-shrink:0;" title="编辑">编辑</button>
-            <button data-action="delete-template" data-id="${c.id}" style="background:none;border:none;font-size:18px;cursor:pointer;padding:8px;flex-shrink:0;" title="删除">删除</button>
+            <button data-action="edit-template" data-id="${c.id}" style="background:none;border:none;font-size:18px;cursor:pointer;padding:8px;flex-shrink:0;" title="编辑模板">✏️</button>
+            <button data-action="delete-template" data-id="${c.id}" style="background:none;border:none;font-size:18px;cursor:pointer;padding:8px;flex-shrink:0;" title="删除模板">🗑️</button>
           </div>
         `).join('')}
       ` : ''}
 
-      <p style="font-size:11px;color:#bbb;text-align:center;margin:8px 0;"></p>
+      <p style="font-size:11px;color:#bbb;text-align:center;margin:8px 0;">💡 点击卡片上的 📥 可导入已有报告继续编辑，或导入照片自动识别</p>
 
       <div style="text-align:center;margin-top:8px;">
-        <button class="btn btn-outline" id="import-template-btn" style="width:100%;">导入新模板（.docx / .json）</button>
+        <button class="btn btn-outline" id="import-template-btn" style="width:100%;">📥 导入新模板（.docx / .json）</button>
       </div>
 
       ${draftsHtml}
 
       ${reports.length > 0 ? `
         <div style="margin-top:16px;">
-          <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;cursor:pointer;" id="history-toggle">历史报告 (${reports.length}) <span style="font-size:11px;opacity:0.65;">▸ 展开</span></h3>
+          <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;cursor:pointer;" id="history-toggle">📚 历史报告 (${reports.length}) <span style="font-size:11px;color:#999;">▸ 展开</span></h3>
           <div id="history-reports-list" style="display:none;">
             ${reports.map(r => `
               <div class="card" style="display:flex;align-items:center;gap:10px;border-left:4px solid #4caf50;cursor:pointer;" data-action="regen-report" data-id="${r.id}">
                 <span style="font-size:24px;flex-shrink:0;">📄</span>
                 <div style="flex:1;min-width:0;">
                   <div style="font-weight:600;font-size:14px;">${escapeHtml(r.typeName || r.type)}</div>
-                  <div style="font-size:12px;opacity:0.65;">${r.itemCount} 项 · ${new Date(r.createdAt).toLocaleDateString('zh-CN')} ${new Date(r.createdAt).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'})}</div>
+                  <div style="font-size:12px;color:#999;">${r.itemCount} 项 · ${new Date(r.createdAt).toLocaleDateString('zh-CN')} ${new Date(r.createdAt).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'})}</div>
                 </div>
-                <button data-action="del-report" data-id="${r.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;" title="删除">删除</button>
+                <button data-action="del-report" data-id="${r.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;" title="删除">🗑️</button>
               </div>
             `).join('')}
           </div>
@@ -290,14 +293,14 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
           showToast('草稿已删除', 5000, {
             label: '撤回',
             onUndo: () => {
-              import('./db.js?v=20260711f').then(({ listDrafts }) => {
+              import('./db.js?v=20260711e').then(({ listDrafts }) => {
                 listDrafts().then(newDrafts => {
                   renderHomePage({ drafts: newDrafts, onSelectType });
                 });
               });
             },
             onTimeout: () => {
-              import('./db.js?v=20260711f').then(({ deleteDraft }) => {
+              import('./db.js?v=20260711e').then(({ deleteDraft }) => {
                 deleteDraft(draftId).catch(() => {});
               });
             },
@@ -307,7 +310,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       return;
     }
 
-    // 导入文件到指定类型（卡片上的 按钮）
+    // 导入文件到指定类型（卡片上的 📥 按钮）
     const importBtn = e.target.closest('[data-action="import-file-type"]');
     if (importBtn) {
       e.stopPropagation();
@@ -347,7 +350,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       const tplId = card.dataset.id;
       showTemplateEditor({ templateId: tplId, onBack: () => {
-        import('./db.js?v=20260711f').then(({ listDrafts }) => {
+        import('./db.js?v=20260711e').then(({ listDrafts }) => {
           listDrafts().then(newDrafts => renderHomePage({ drafts: newDrafts, onSelectType }));
         });
       }});
@@ -358,7 +361,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (action === 'delete-template') {
       e.stopPropagation();
       const tplId = card.dataset.id;
-      import('./db.js?v=20260711f').then(({ deleteTemplate }) => {
+      import('./db.js?v=20260711e').then(({ deleteTemplate }) => {
         deleteTemplate(tplId).then(() => {
           // 同步删除原始 .docx 存储
           import('./docx-template-cloner.js').then(({ deleteOriginalTemplate }) => {
@@ -366,7 +369,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
           }).catch(() => {});
           removeCustomTemplate(tplId);
           clearTypeInfoCache();
-          import('./db.js?v=20260711f').then(({ listDrafts }) => {
+          import('./db.js?v=20260711e').then(({ listDrafts }) => {
             listDrafts().then(newDrafts => {
               renderHomePage({ drafts: newDrafts, onSelectType });
             });
@@ -383,7 +386,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (delReportBtn) {
       e.stopPropagation();
       const rptId = delReportBtn.dataset.id;
-      import('./db.js?v=20260711f').then(async ({ deleteReport, listDrafts }) => {
+      import('./db.js?v=20260711e').then(async ({ deleteReport, listDrafts }) => {
         await deleteReport(rptId);
         const d = await listDrafts();
         renderHomePage({ drafts: d, onSelectType });
@@ -396,12 +399,12 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       showToast('正在重新生成报告...');
       try {
-        const { listReports } = await import('./db.js?v=20260711f');
+        const { listReports } = await import('./db.js?v=20260711e');
         const all = await listReports();
         const rpt = all.find(r => r.id === regenBtn.dataset.id);
         if (!rpt) { showToast('报告数据已丢失'); return; }
 
-        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711f');
+        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711e');
         const { getTemplate } = await import('../templates/templates.js');
         const tpl = getTemplate(rpt.type);
         loadTemplate(tpl);
@@ -428,7 +431,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   if (presetsBar) {
     presetsBar.onclick = () => {
       showSettingsPanel({ onSave: () => {
-        import('./db.js?v=20260711f').then(({ listDrafts }) => {
+        import('./db.js?v=20260711e').then(({ listDrafts }) => {
           listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
         });
       }});
@@ -443,7 +446,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       historyToggle.onclick = () => {
         const isVisible = historyList.style.display !== 'none';
         historyList.style.display = isVisible ? 'none' : 'block';
-        historyToggle.innerHTML = `历史报告 (${reports.length}) <span style="font-size:11px;opacity:0.65;">${isVisible ? '▸ 展开' : '▾ 收起'}</span>`;
+        historyToggle.innerHTML = `📚 历史报告 (${reports.length}) <span style="font-size:11px;color:#999;">${isVisible ? '▸ 展开' : '▾ 收起'}</span>`;
       };
     }
   }, 0);
@@ -453,7 +456,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     const importBtn = document.getElementById('import-template-btn');
     if (importBtn) {
       importBtn.onclick = () => showImportPanel({ onSelectType, onBack: (jumpToTemplateId) => {
-        import('./db.js?v=20260711f').then(({ listDrafts }) => {
+        import('./db.js?v=20260711e').then(({ listDrafts }) => {
           listDrafts().then(d => {
             renderHomePage({ drafts: d, onSelectType });
             if (jumpToTemplateId) {
@@ -486,31 +489,31 @@ function renderItemList({ reportType, items, headerInfo, onAdd, onEdit, onDelete
       </div>
 
       <div style="padding:12px 0;font-size:13px;color:var(--text-secondary);display:flex;justify-content:space-between;">
-        <span>${items.length} 个问题项（${photoCount} 张照片）</span>
+        <span>📋 ${items.length} 个问题项（📷 ${photoCount} 张照片）</span>
         <span>${doneLabel}</span>
       </div>
 
       <div id="items-container">
         ${items.length === 0 ? `
           <div style="text-align:center;padding:60px 20px;color:var(--text-secondary);">
-            <div style="font-size:48px;margin-bottom:12px;"></div>
+            <div style="font-size:48px;margin-bottom:12px;">📸</div>
             <p>还没有添加问题项</p>
             <p style="font-size:13px;">点击下方按钮开始拍照记录</p>
           </div>
         ` : items.map((item, i) => `
           <div class="item-row" data-action="edit" data-index="${i}">
             <div class="thumb">
-              ${item.beforePhoto ? `<img src="${item.beforePhoto}" alt="整改前" loading="lazy" decoding="async">` : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:20px;opacity:0.65;">📷</div>'}
+              ${item.beforePhoto ? `<img src="${item.beforePhoto}" alt="整改前" loading="lazy" decoding="async">` : '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:20px;color:#999;">📷</div>'}
             </div>
             <div class="info">
               <div class="desc">${escapeHtml(item.description || '(未填写描述)')}</div>
               <div class="meta">
-                ${item.beforePhoto ? '📷前' : '无前'} ·
-                ${item.afterPhoto ? '📷后' : '无后'} ·
+                ${item.beforePhoto ? '📷前' : '⭕无前'} ·
+                ${item.afterPhoto ? '📷后' : '⭕无后'} ·
                 ${item.afterPhoto ? '✓已整改' : '待整改'}
               </div>
             </div>
-            <button style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px;" data-action="delete" data-index="${i}">删除</button>
+            <button style="background:none;border:none;font-size:18px;cursor:pointer;padding:4px;" data-action="delete" data-index="${i}">🗑️</button>
           </div>
         `).join('')}
       </div>
@@ -520,7 +523,7 @@ function renderItemList({ reportType, items, headerInfo, onAdd, onEdit, onDelete
       <button class="btn btn-primary btn-block" id="add-item-btn" style="font-size:18px;">+ 新增问题项</button>
       <button class="btn btn-outline" id="checklist-btn" style="flex-shrink:0;display:none;" title="检查清单">📋</button>
       ${items.length > 0 ? `
-        <button class="btn btn-success" id="generate-btn" style="flex-shrink:0;">生成报告</button>
+        <button class="btn btn-success" id="generate-btn" style="flex-shrink:0;">📄 生成报告</button>
       ` : ''}
     </div>
   `;
@@ -573,13 +576,13 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
       <div class="photo-slots">
         <div class="photo-slot ${beforePhoto ? 'has-photo' : ''}" id="slot-before" style="position:relative;">
           ${beforePhoto
-            ? `<img src="${beforePhoto}" alt="${photoLabels.before}"><div style="position:absolute;bottom:4px;left:4px;font-size:10px;background:rgba(0,0,0,0.6);color:#fff;padding:2px 6px;border-radius:4px;">${photoLabels.before} ✓</div><button class="slot-edit-btn" data-slot="slot-before">修图</button>`
+            ? `<img src="${beforePhoto}" alt="${photoLabels.before}"><div style="position:absolute;bottom:4px;left:4px;font-size:10px;background:rgba(0,0,0,0.6);color:#fff;padding:2px 6px;border-radius:4px;">${photoLabels.before} ✓</div><button class="slot-edit-btn" data-slot="slot-before">✨ 修图</button>`
             : `<span class="slot-icon">🖼️</span><span class="slot-label">${photoLabels.before}</span>`}
           <button class="slot-camera-btn" data-slot="slot-before" style="position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,0.5);color:#fff;font-size:16px;line-height:32px;text-align:center;cursor:pointer;padding:0;z-index:5;">📷</button>
         </div>
         <div class="photo-slot ${afterPhoto ? 'has-photo' : ''}" id="slot-after" style="position:relative;">
           ${afterPhoto
-            ? `<img src="${afterPhoto}" alt="${photoLabels.after}"><div style="position:absolute;bottom:4px;left:4px;font-size:10px;background:rgba(0,0,0,0.6);color:#fff;padding:2px 6px;border-radius:4px;">${photoLabels.after} ✓</div><button class="slot-edit-btn" data-slot="slot-after">修图</button>`
+            ? `<img src="${afterPhoto}" alt="${photoLabels.after}"><div style="position:absolute;bottom:4px;left:4px;font-size:10px;background:rgba(0,0,0,0.6);color:#fff;padding:2px 6px;border-radius:4px;">${photoLabels.after} ✓</div><button class="slot-edit-btn" data-slot="slot-after">✨ 修图</button>`
             : `<span class="slot-icon">🖼️</span><span class="slot-label">${photoLabels.after}<br><small>(选填，上传=已整改)</small></span>`}
           <button class="slot-camera-btn" data-slot="slot-after" style="position:absolute;top:6px;right:6px;width:32px;height:32px;border-radius:50%;border:none;background:rgba(0,0,0,0.5);color:#fff;font-size:16px;line-height:32px;text-align:center;cursor:pointer;padding:0;z-index:5;">📷</button>
         </div>
@@ -588,15 +591,15 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
       <div class="form-group">
         <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
           <span>${descLabel}</span>
-          <button class="btn btn-purple btn-sm" id="optimize-btn-inline" ${!desc.trim() ? 'disabled' : ''} style="${!desc.trim() ? 'opacity:0.5;' : ''}">AI润色</button>
+          <button class="btn btn-purple btn-sm" id="optimize-btn-inline" ${!desc.trim() ? 'disabled' : ''} style="${!desc.trim() ? 'opacity:0.5;' : ''}">✨ AI润色</button>
         </label>
         <textarea class="form-input" id="item-desc" placeholder="例如：灭火器过期未更换，存在火灾隐患">${escapeHtml(desc)}</textarea>
         ${renderHistoryTags('optimize_history', null, reportType)}
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:14px;">
-        <button class="btn btn-primary btn-block" id="voice-btn">语音输入</button>
-        <button class="btn btn-outline btn-block" id="text-focus-btn">文字输入</button>
+        <button class="btn btn-primary btn-block" id="voice-btn">🎤 语音输入</button>
+        <button class="btn btn-outline btn-block" id="text-focus-btn">✏️ 文字输入</button>
       </div>
 
       <div id="voice-status" style="display:none;text-align:center;padding:12px;background:#fdf3e0;border-radius:10px;margin-bottom:10px;">
@@ -604,7 +607,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
         <span id="voice-text" style="font-size:14px;">正在聆听...</span>
       </div>
 
-      <button class="btn btn-success btn-block" id="save-item-btn">保存</button>
+      <button class="btn btn-success btn-block" id="save-item-btn">💾 保存</button>
     </div>
   `;
 
@@ -657,7 +660,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
       });
     }
 
-    // 修图按钮 → AI 修图面板（Pro版功能）
+    // ✨ 修图按钮 → AI 修图面板（Pro版功能）
     const editBtn = slot.querySelector('.slot-edit-btn');
     if (editBtn) {
       editBtn.addEventListener('click', (e) => {
@@ -665,13 +668,21 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
         const currentPhoto = slotId === 'slot-before' ? beforePhoto : afterPhoto;
         if (!currentPhoto) return;
 
-        // 免费版检查
+        // 修图权限检查
         if (!isFeatureAllowed('image-edit')) {
-          showUpgradePanel({
-            reason: 'image-edit',
-            message: 'AI修图是Pro版功能，升级后即可使用',
-            currentUsage: getUsageThisMonth(),
-            onActivate: async (code) => {
+          const activation = checkActivation();
+          const imgUsage = getImageEditUsageThisMonth();
+          if (activation.activated) {
+            // Pro 用户本月修图次数用完
+            showToast(`本月AI修图次数已用完（${IMAGE_EDIT_MONTHLY_LIMIT}次/月），下月自动恢复`, 4000);
+            return;
+          } else {
+            // 免费版用户无修图权限
+            showUpgradePanel({
+              reason: 'image-edit',
+              message: `AI修图是Pro版功能，升级后即可使用（每月${IMAGE_EDIT_MONTHLY_LIMIT}次）`,
+              currentUsage: getUsageThisMonth(),
+              onActivate: async (code) => {
               const result = await activateCode(code);
               if (result.success) {
                 renderItemForm({
@@ -757,7 +768,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
     const voiceText = document.getElementById('voice-text');
     statusDiv.style.display = 'block';
     voiceText.textContent = '正在聆听...';
-    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711f');
+    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711e');
     window._voiceRecognition = startVoiceRecognition({
       onResult: (text) => {
         voiceText.textContent = text;
@@ -826,10 +837,10 @@ function renderOptimizePage({ text, reportType, options, loading, onSelect, onEd
         <span class="title">AI 润色结果</span>
       </div>
       <div style="background:#fafaf7;border-radius:10px;padding:12px;margin-bottom:14px;margin-top:10px;">
-        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">原始描述：</div>
+        <div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;">📝 原始描述：</div>
         <div style="font-size:14px;">${escapeHtml(text)}</div>
         <div style="font-size:11px;color:var(--primary);margin-top:6px;">
-          ${reportType === 'safety' ? '安全类 — 附加风险描述(≤15字)' : '现场类 — 附加影响说明(≤15字)'}
+          ${reportType === 'safety' ? '🛡️ 安全类 — 附加风险描述(≤15字)' : '📋 现场类 — 附加影响说明(≤15字)'}
         </div>
       </div>
       <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px;">请选择一个优化结果：</p>
@@ -848,10 +859,10 @@ function renderOptimizePage({ text, reportType, options, loading, onSelect, onEd
       </div>
       ${!loading ? `
         <div style="display:flex;gap:10px;margin-top:14px;">
-          <button class="btn btn-warning btn-block" id="edit-selected-btn" disabled>编辑修改</button>
-          <button class="btn btn-purple btn-block" id="retry-btn">换一批</button>
+          <button class="btn btn-warning btn-block" id="edit-selected-btn" disabled>✏️ 编辑修改</button>
+          <button class="btn btn-purple btn-block" id="retry-btn">🔄 换一批</button>
         </div>
-        <button class="btn" id="use-original-btn" style="width:100%;margin-top:10px;padding:10px;border-radius:8px;border:1px solid #999;background:#fff;color:#666;font-size:14px;">直接使用原文（不用 AI 结果）</button>
+        <button class="btn" id="use-original-btn" style="width:100%;margin-top:10px;padding:10px;border-radius:8px;border:1px solid #999;background:#fff;color:#666;font-size:14px;">📋 直接使用原文（不用 AI 结果）</button>
       ` : ''}
     </div>
   `;
@@ -914,12 +925,12 @@ function showEditModal(initialText, onConfirm) {
 // ---------- AI 修图面板 ----------
 
 const QUICK_PROMPTS = [
-  { label: '调亮', prompt: '调亮图片，增强光线，让画面更清晰明亮' },
-  { label: '去水印', prompt: '去掉图片上的水印和日期文字' },
-  { label: '增强清晰度', prompt: '提高图片清晰度和细节，去噪，锐化' },
-  { label: '校正颜色', prompt: '校正图片颜色，让色彩自然真实' },
-  { label: '裁剪杂乱', prompt: '去掉图片边缘杂乱无关的物体和背景' },
-  { label: '突出主体', prompt: '虚化背景，突出画面主体' },
+  { label: '🔆 调亮', prompt: '调亮图片，增强光线，让画面更清晰明亮' },
+  { label: '💧 去水印', prompt: '去掉图片上的水印和日期文字' },
+  { label: '✨ 增强清晰度', prompt: '提高图片清晰度和细节，去噪，锐化' },
+  { label: '🎨 校正颜色', prompt: '校正图片颜色，让色彩自然真实' },
+  { label: '📐 裁剪杂乱', prompt: '去掉图片边缘杂乱无关的物体和背景' },
+  { label: '🔍 突出主体', prompt: '虚化背景，突出画面主体' },
 ];
 
 function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
@@ -931,7 +942,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
   overlay.innerHTML = `
     <div class="edit-panel">
       <div class="edit-panel-header">
-        <span class="edit-panel-title">AI 修图 — ${slotLabel}照片</span>
+        <span class="edit-panel-title">✨ AI 修图 — ${slotLabel}照片</span>
         <button class="edit-panel-close" id="edit-panel-close">✕</button>
       </div>
 
@@ -947,10 +958,10 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
         <!-- 修改指令 -->
         <div class="edit-panel-section">
           <div class="edit-panel-label" style="display:flex;align-items:center;justify-content:space-between;">
-            <span>编辑 修改指令</span>
+            <span>✏️ 修改指令</span>
             <div style="display:flex;gap:6px;">
               <button class="btn btn-primary btn-sm" id="edit-voice-btn" style="padding:6px 10px;font-size:15px;">🎤</button>
-              <button class="btn btn-purple btn-sm" id="edit-optimize-btn" disabled style="opacity:0.5;">润色</button>
+              <button class="btn btn-purple btn-sm" id="edit-optimize-btn" disabled style="opacity:0.5;">✨ 润色</button>
             </div>
           </div>
           <textarea class="form-input edit-prompt-input" id="edit-prompt-input"
@@ -975,7 +986,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
         <!-- 操作按钮 -->
         <div style="display:flex;gap:10px;margin-top:12px;">
           <button class="btn btn-outline btn-block" id="edit-panel-cancel">取消</button>
-          <button class="btn btn-purple btn-block" id="edit-panel-submit" disabled>开始修图</button>
+          <button class="btn btn-purple btn-block" id="edit-panel-submit" disabled>🎨 开始修图</button>
         </div>
 
         <!-- 加载状态 -->
@@ -986,11 +997,11 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
 
         <!-- 结果预览 -->
         <div id="edit-panel-result" style="display:none;">
-          <div class="edit-panel-label">修图结果</div>
+          <div class="edit-panel-label">✅ 修图结果</div>
           <div class="edit-panel-preview" id="edit-result-preview" style="border:2px solid var(--success);"></div>
           <div style="display:flex;gap:10px;margin-top:10px;">
-            <button class="btn btn-outline btn-block" id="edit-retry-btn">换一批 重试</button>
-            <button class="btn btn-success btn-block" id="edit-use-btn">使用此图</button>
+            <button class="btn btn-outline btn-block" id="edit-retry-btn">🔄 重试</button>
+            <button class="btn btn-success btn-block" id="edit-use-btn">✅ 使用此图</button>
           </div>
         </div>
       </div>
@@ -1039,7 +1050,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
     optimizePromptBtn.style.opacity = hasText ? '1' : '0.5';
   });
 
-  // 语音输入修图指令
+  // 🎤 语音输入修图指令
   const editVoiceBtn = overlay.querySelector('#edit-voice-btn');
   const editVoiceStatus = overlay.querySelector('#edit-voice-status');
   const editVoiceText = overlay.querySelector('#edit-voice-text');
@@ -1047,7 +1058,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
     editVoiceStatus.style.display = 'block';
     editVoiceText.textContent = '正在聆听...';
     try {
-      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711f');
+      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711e');
       startVoiceRecognition({
         onResult: (text) => {
           promptInput.value = text;
@@ -1071,7 +1082,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
     }
   };
 
-  // AI 润色修图指令
+  // ✨ AI 润色修图指令
   optimizePromptBtn.onclick = async () => {
     const rawPrompt = promptInput.value.trim();
     if (!rawPrompt) return;
@@ -1085,7 +1096,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
       showToast(e.message || 'AI 润色失败');
     } finally {
       optimizePromptBtn.disabled = false;
-      optimizePromptBtn.textContent = '润色';
+      optimizePromptBtn.textContent = '✨ 润色';
     }
   };
 
@@ -1117,6 +1128,9 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
       });
 
       if (result.success && result.image) {
+        // 递增修图计数
+        incrementImageEditUsage();
+
         // 显示结果
         loadingDiv.style.display = 'none';
         resultDiv.style.display = 'block';
@@ -1147,11 +1161,11 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
       resultDiv.style.display = 'block';
       resultDiv.querySelector('#edit-result-preview').innerHTML = `
         <div style="text-align:center;padding:24px;color:var(--danger);">
-          <div style="font-size:32px;margin-bottom:8px;"></div>
+          <div style="font-size:32px;margin-bottom:8px;">😞</div>
           <div style="font-size:14px;">${escapeHtml(err.message || '网络异常，请检查网络后重试')}</div>
         </div>`;
       resultDiv.querySelector('#edit-use-btn').style.display = 'none';
-      resultDiv.querySelector('#edit-retry-btn').textContent = '返回修改';
+      resultDiv.querySelector('#edit-retry-btn').textContent = '🔙 返回修改';
       resultDiv.querySelector('#edit-retry-btn').onclick = () => {
         previewArea.style.display = 'block';
         quickPromptsDiv.style.display = 'flex';
@@ -1159,7 +1173,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
         loadingDiv.style.display = 'none';
         resultDiv.style.display = 'none';
         resultDiv.querySelector('#edit-use-btn').style.display = '';
-        resultDiv.querySelector('#edit-retry-btn').textContent = '换一批 重试';
+        resultDiv.querySelector('#edit-retry-btn').textContent = '🔄 重试';
       };
     }
   };
@@ -1180,12 +1194,12 @@ function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, 
     const halfLabel = h.halfMonth === 'first' ? '上半月' : '下半月';
     const d = (h.inspectionDate || h.date) ? new Date(h.inspectionDate || h.date) : new Date();
     halfMonthPreviewHtml = `
-      <div style="margin-top:10px;border-radius:4px;padding:10px;">
-        <div style="font-size:11px;color:var(--primary);margin-bottom:4px;">标题预览：</div>
+      <div style="margin-top:10px;background:#fdf7f0;border-radius:8px;padding:10px;">
+        <div style="font-size:11px;color:var(--primary);margin-bottom:4px;">📝 标题预览：</div>
         <div style="font-size:13px;font-weight:600;">${d.getFullYear()}年${d.getMonth()+1}月${getPresetDepartment() || '部门'}5S现场检查通报（${halfLabel}）</div>
         <div style="margin-top:8px;">
-          <button class="btn btn-sm ${h.halfMonth === 'first' ? 'btn-primary' : 'btn-outline'}" id="hm-first" style="margin-right:8px;">上半月</button>
-          <button class="btn btn-sm ${h.halfMonth === 'second' ? 'btn-primary' : 'btn-outline'}" id="hm-second">下半月</button>
+          <button class="btn btn-sm ${h.halfMonth === 'first' ? 'btn-primary' : 'btn-outline'}" id="hm-first" style="margin-right:8px;">📅 上半月</button>
+          <button class="btn btn-sm ${h.halfMonth === 'second' ? 'btn-primary' : 'btn-outline'}" id="hm-second">📅 下半月</button>
         </div>
       </div>
     `;
@@ -1200,19 +1214,19 @@ function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, 
 
       <div style="margin-top:12px;">
         <div class="card" style="cursor:default;">
-          <div style="font-weight:600;margin-bottom:8px;">${typeName}</div>
+          <div style="font-weight:600;margin-bottom:8px;">📄 ${typeName}</div>
           <div style="font-size:13px;line-height:2;color:var(--text-secondary);">
             公司：${escapeHtml(getPresetCompany() || '(未设置)')}<br>
             部门：${escapeHtml(getPresetDepartment() || '(未设置)')}<br>
             问题数：${items.length} · 已整改：${doneCount}
           </div>
           <div style="margin-top:10px;">
-            <label style="font-size:13px;color:var(--text-secondary);">检查日期：</label>
+            <label style="font-size:13px;color:var(--text-secondary);">🔍 检查日期：</label>
             <input type="date" class="form-input" id="inspection-date" value="${h.inspectionDate || h.date || getTodayStr()}" style="width:auto;display:inline-block;">
-            <div style="font-size:10px;opacity:0.65;margin-top:2px;">用于确定检查区间（报告概述中的日期）</div>
+            <div style="font-size:10px;color:#999;margin-top:2px;">用于确定检查区间（报告概述中的日期）</div>
           </div>
           <div style="margin-top:8px;">
-            <label style="font-size:13px;color:var(--text-secondary);">落款日期：</label>
+            <label style="font-size:13px;color:var(--text-secondary);">✍️ 落款日期：</label>
             <input type="date" class="form-input" id="sig-date" value="${h.date || getTodayStr()}" style="width:auto;display:inline-block;">
           </div>
           ${halfMonthPreviewHtml}
@@ -1220,15 +1234,15 @@ function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, 
       </div>
 
       <div style="margin-top:16px;background:#fafafa;border-radius:8px;padding:12px;">
-        <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">编辑 报告概述（可修改）</h3>
-        <label style="font-size:11px;opacity:0.65;">标题</label>
+        <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:4px;">✏️ 报告概述（可修改）</h3>
+        <label style="font-size:11px;color:#999;">标题</label>
         <input type="text" id="overview-title" value="${escapeHtml(preTitle || '')}" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;margin-bottom:8px;box-sizing:border-box;">
-        <label style="font-size:11px;opacity:0.65;">概述文字</label>
+        <label style="font-size:11px;color:#999;">概述文字</label>
         <textarea id="overview-text" rows="3" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:6px;font-size:13px;box-sizing:border-box;resize:vertical;">${escapeHtml(preOverview || '')}</textarea>
       </div>
 
       <div style="margin-top:16px;">
-        <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">报告预览（${items.length}项）</h3>
+        <h3 style="font-size:14px;color:var(--text-secondary);margin-bottom:8px;">📋 报告预览（${items.length}项）</h3>
         ${items.map((item, i) => `
           <div style="display:flex;gap:10px;align-items:flex-start;font-size:13px;padding:10px 0;border-bottom:1px solid var(--border);">
             <span style="font-weight:600;min-width:24px;padding-top:2px;">#${i + 1}</span>
@@ -1251,8 +1265,8 @@ function renderGeneratePage({ reportType, headerInfo, items, onConfirm, onBack, 
       </div>
     </div>
     <div class="bottom-bar">
-      <button class="btn btn-success btn-block" id="download-btn">下载 Word</button>
-      <button class="btn btn-wechat btn-block" id="share-btn">分享</button>
+      <button class="btn btn-success btn-block" id="download-btn">📥 下载 Word</button>
+      <button class="btn btn-wechat btn-block" id="share-btn">💬 分享</button>
     </div>
   `;
 
@@ -1317,7 +1331,7 @@ function showMergePanel({ parsed, drafts, reportType, onConfirm, onCancel }) {
           <span style="background:${(typeInfo[d.type] || {}).color || '#ccc'};color:#fff;font-size:10px;padding:2px 8px;border-radius:10px;flex-shrink:0;">${(typeInfo[d.type] || {}).shortName || d.type}</span>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:600;font-size:14px;">${isSameType ? '合并到此草稿' : '合并到此草稿（不同类型）'}</div>
-            <div style="font-size:12px;opacity:0.65;">${d.data?.items?.length || 0} 条 · ${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</div>
+            <div style="font-size:12px;color:#999;">${d.data?.items?.length || 0} 条 · ${new Date(d.updatedAt).toLocaleDateString('zh-CN')}</div>
           </div>
         </div>
       </div>`;
@@ -1327,31 +1341,31 @@ function showMergePanel({ parsed, drafts, reportType, onConfirm, onCancel }) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:50;display:flex;align-items:flex-end;justify-content:center;';
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
-      <h3 style="margin-bottom:4px;">导入预览</h3>
-      <p style="font-size:13px;opacity:0.65;margin-bottom:4px;">识别到 <strong>${parsed.items.length}</strong> 条问题 · 类型：<span style="color:var(--primary);font-weight:600;">${currentTypeInfo.icon} ${currentTypeInfo.name}</span></p>
+      <h3 style="margin-bottom:4px;">📥 导入预览</h3>
+      <p style="font-size:13px;color:#999;margin-bottom:4px;">识别到 <strong>${parsed.items.length}</strong> 条问题 · 类型：<span style="color:var(--primary);font-weight:600;">${currentTypeInfo.icon} ${currentTypeInfo.name}</span></p>
 
-      <p style="font-size:13px;opacity:0.65;margin-bottom:8px;">选择导入目标：</p>
+      <p style="font-size:13px;color:#999;margin-bottom:8px;">选择导入目标：</p>
 
       ${sameTypeDrafts.length > 0 ? `
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;margin-top:4px;">同类型草稿</p>
+        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;margin-top:4px;">📂 同类型草稿</p>
         ${sameTypeDrafts.map(d => draftHtml(d, true)).join('')}
       ` : ''}
 
       ${otherDrafts.length > 0 ? `
-        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;margin-top:4px;">其他类型草稿</p>
+        <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;margin-top:4px;">📂 其他类型草稿</p>
         ${otherDrafts.map(d => draftHtml(d, false)).join('')}
       ` : ''}
 
       ${sameTypeDrafts.length === 0 && otherDrafts.length === 0 ? `
-        <div style="text-align:center;padding:16px;opacity:0.65;font-size:13px;">暂无草稿</div>
+        <div style="text-align:center;padding:16px;color:#999;font-size:13px;">暂无草稿</div>
       ` : ''}
 
       <div class="merge-option" data-target="new" style="border:1px solid #e0dbd2;border-radius:10px;padding:12px;margin-bottom:14px;margin-top:6px;">
         <div style="display:flex;align-items:center;gap:8px;">
           <span style="border:1px solid #ccc;color:#ccc;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;">○</span>
           <div>
-            <div style="font-weight:600;font-size:14px;">创建新草稿</div>
-            <div style="font-size:12px;opacity:0.65;">不合并，单独保存</div>
+            <div style="font-weight:600;font-size:14px;">✨ 创建新草稿</div>
+            <div style="font-size:12px;color:#999;">不合并，单独保存</div>
           </div>
         </div>
       </div>
@@ -1414,8 +1428,8 @@ function showImportPanel({ onSelectType, onBack }) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
-      <h3 style="margin-bottom:12px;">导入模板</h3>
-      <p style="font-size:13px;opacity:0.65;margin-bottom:12px;">支持 .json（模板文件）和 .docx（Word模板自动识别）</p>
+      <h3 style="margin-bottom:12px;">📥 导入模板</h3>
+      <p style="font-size:13px;color:#999;margin-bottom:12px;">支持 .json（模板文件）和 .docx（Word模板自动识别）</p>
 
       <div id="import-drop-zone" style="border:2px dashed #ccc;border-radius:12px;padding:40px 20px;text-align:center;cursor:pointer;margin-bottom:12px;transition:border-color 0.2s;">
         <div style="font-size:40px;margin-bottom:8px;">📂</div>
@@ -1469,7 +1483,7 @@ function showImportPanel({ onSelectType, onBack }) {
         const tpl = JSON.parse(text);
         if (!tpl.id || !tpl.columns) throw new Error('JSON 格式不正确：缺少 id 或 columns');
 
-        const { saveTemplate } = await import('./db.js?v=20260711f');
+        const { saveTemplate } = await import('./db.js?v=20260711e');
         const record = await saveTemplate({ ...tpl, source: 'imported', isBuiltin: false });
         refreshCustomTemplate(record.id, tpl);
         clearTypeInfoCache();
@@ -1497,7 +1511,7 @@ function showImportPanel({ onSelectType, onBack }) {
           setTimeout(() => {
             document.body.removeChild(overlay);
             showManualBuilder({ onSave: async (tpl) => {
-              const { saveTemplate } = await import('./db.js?v=20260711f');
+              const { saveTemplate } = await import('./db.js?v=20260711e');
               const record = await saveTemplate({ ...tpl, source: 'manual', isBuiltin: false });
               refreshCustomTemplate(record.id, tpl);
               clearTypeInfoCache();
@@ -1543,12 +1557,12 @@ function showTemplateConfirm(parseResult, { onBack }) {
     let statusIcon = '✅';
     let statusColor = '#4caf50';
     if (unknown) {
-      statusIcon = unknown.guessedType ? '' : '';
-      statusColor = unknown.guessedType ? '#e07b20' : '#d14343';
+      statusIcon = unknown.guessedType ? '⚠️' : '❓';
+      statusColor = unknown.guessedType ? '#ff9800' : '#f44336';
     }
     return `
       <div style="display:flex;align-items:center;gap:8px;padding:8px;border-bottom:1px solid #eee;">
-        <span style="font-size:16px;" title="${statusIcon === '✅' ? '已识别' : statusIcon === '' ? 'AI猜测' : '未识别'}">${statusIcon}</span>
+        <span style="font-size:16px;" title="${statusIcon === '✅' ? '已识别' : statusIcon === '⚠️' ? 'AI猜测' : '未识别'}">${statusIcon}</span>
         <span style="flex:1;font-size:14px;">${escapeHtml(col.label)}</span>
         <select class="tpl-col-type" data-index="${i}" style="font-size:13px;padding:4px;border-radius:6px;border:1px solid ${statusColor};">
           <option value="number" ${col.type === 'number' ? 'selected' : ''}>序号</option>
@@ -1562,9 +1576,9 @@ function showTemplateConfirm(parseResult, { onBack }) {
 
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:85vh;overflow-y:auto;">
-      <h3 style="margin-bottom:4px;">模板识别结果</h3>
-      <p style="font-size:12px;opacity:0.65;margin-bottom:12px;">
-        ✅已识别 | AI猜测(可改) | 未识别(请手动选择)
+      <h3 style="margin-bottom:4px;">🔍 模板识别结果</h3>
+      <p style="font-size:12px;color:#999;margin-bottom:12px;">
+        ✅已识别 | ⚠️AI猜测(可改) | ❓未识别(请手动选择)
       </p>
 
       <div style="margin-bottom:12px;">
@@ -1579,12 +1593,12 @@ function showTemplateConfirm(parseResult, { onBack }) {
       </div>
 
       ${unknowns.length > 0 ? `
-        <button class="btn btn-purple btn-block" id="ai-guess-btn" style="margin-bottom:12px;">AI 智能识别未匹配列</button>
+        <button class="btn btn-purple btn-block" id="ai-guess-btn" style="margin-bottom:12px;">🤖 AI 智能识别未匹配列</button>
       ` : ''}
 
       <div style="display:flex;gap:10px;">
         <button class="btn btn-outline btn-block" id="tpl-cancel-btn">取消</button>
-        <button class="btn btn-primary btn-block" id="tpl-save-btn">保存模板</button>
+        <button class="btn btn-primary btn-block" id="tpl-save-btn">💾 保存模板</button>
       </div>
     </div>`;
 
@@ -1612,7 +1626,7 @@ function showTemplateConfirm(parseResult, { onBack }) {
       else if (sel.value === 'remark') template.columns[i].field = '_remark';
     });
 
-    const { saveTemplate } = await import('./db.js?v=20260711f');
+    const { saveTemplate } = await import('./db.js?v=20260711e');
     const record = await saveTemplate({ ...template, source: 'docx-imported', isBuiltin: false });
     refreshCustomTemplate(record.id, template);
     clearTypeInfoCache();
@@ -1620,9 +1634,9 @@ function showTemplateConfirm(parseResult, { onBack }) {
     document.body.removeChild(overlay);
     // 询问是否立即使用
     showConfirm({
-      title: '模板已就绪',
+      title: '✅ 模板已就绪',
       message: `"${template.name}"导入成功！要现在开始创建报告吗？`,
-      confirmText: '开始使用',
+      confirmText: '🚀 开始使用',
       cancelText: '返回首页',
       onConfirm: () => onBack(record.id),
       onCancel: () => onBack(),
@@ -1642,7 +1656,7 @@ function showTemplateConfirm(parseResult, { onBack }) {
         showTemplateConfirm({ template, unknowns: guessed }, { onBack });
       } catch (e) {
         aiBtn.disabled = false;
-        aiBtn.textContent = 'AI 智能识别未匹配列';
+        aiBtn.textContent = '🤖 AI 智能识别未匹配列';
         showToast('AI 识别失败，请检查网络');
       }
     };
@@ -1657,8 +1671,8 @@ function showManualBuilder({ onSave, onCancel }) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
-      <h3 style="margin-bottom:12px;">手动创建模板</h3>
-      <p style="font-size:13px;opacity:0.65;margin-bottom:12px;">Word 模板解析失败，请手动配置</p>
+      <h3 style="margin-bottom:12px;">🛠️ 手动创建模板</h3>
+      <p style="font-size:13px;color:#999;margin-bottom:12px;">Word 模板解析失败，请手动配置</p>
 
       <div style="margin-bottom:12px;">
         <label style="font-size:13px;color:#666;">模板名称</label>
@@ -1685,7 +1699,7 @@ function showManualBuilder({ onSave, onCancel }) {
 
       <div style="display:flex;gap:10px;">
         <button class="btn btn-outline btn-block" id="manual-cancel">取消</button>
-        <button class="btn btn-primary btn-block" id="manual-save">保存 创建</button>
+        <button class="btn btn-primary btn-block" id="manual-save">💾 创建</button>
       </div>
     </div>`;
 
@@ -1748,31 +1762,31 @@ function showTemplateEditor({ templateId, onBack }) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:520px;border-radius:16px 16px 0 0;padding:20px;max-height:90vh;overflow-y:auto;">
-      <h3 style="margin-bottom:4px;">编辑模板：${escapeHtml(tpl.name)}</h3>
-      ${isBuiltin ? '<p style="font-size:12px;color:#c4553d;margin-bottom:8px;"> 内置模板，编辑后将保存为我的模板</p>' : ''}
+      <h3 style="margin-bottom:4px;">✏️ 编辑模板：${escapeHtml(tpl.name)}</h3>
+      ${isBuiltin ? '<p style="font-size:12px;color:#c4553d;margin-bottom:8px;">⚠️ 内置模板，编辑后将保存为我的模板</p>' : ''}
 
       <div style="margin-bottom:14px;">
-        <label style="font-size:13px;color:#666;">报告标题模板</label>
+        <label style="font-size:13px;color:#666;">📝 报告标题模板</label>
         <textarea id="tpl-edit-title" rows="1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;font-size:14px;">${escapeHtml(tpl.titleTemplate || '')}</textarea>
       </div>
 
       <div style="margin-bottom:14px;">
-        <label style="font-size:13px;color:#666;">概述文字模板</label>
+        <label style="font-size:13px;color:#666;">📋 概述文字模板</label>
         <textarea id="tpl-edit-overview" rows="3" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;font-size:13px;">${escapeHtml(tpl.overviewTemplate || '')}</textarea>
       </div>
 
       <div style="margin-bottom:14px;">
-        <label style="font-size:13px;color:#666;">落款设置（报告末尾右对齐显示）</label>
+        <label style="font-size:13px;color:#666;">🏢 落款设置（报告末尾右对齐显示）</label>
         <div style="display:flex;gap:8px;margin-top:4px;">
           <input type="text" id="tpl-edit-footer-co" placeholder="公司名称" value="${escapeHtml(getFooterPart(tpl, 0))}" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
           <input type="text" id="tpl-edit-footer-dept" placeholder="部门" value="${escapeHtml(getFooterPart(tpl, 1))}" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
           <input type="text" id="tpl-edit-footer-date" placeholder="日期" value="${escapeHtml(getFooterPart(tpl, 2))}" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
         </div>
-        <div style="font-size:10px;opacity:0.65;margin-top:4px;">支持占位符：<code>{{company}}</code> <code>{{department}}</code> <code>{{date}}</code></div>
+        <div style="font-size:10px;color:#999;margin-top:4px;">支持占位符：<code>{{company}}</code> <code>{{department}}</code> <code>{{date}}</code></div>
       </div>
 
       <div style="margin-bottom:16px;">
-        <label style="font-size:13px;color:#666;margin-bottom:4px;display:block;">效果预览</label>
+        <label style="font-size:13px;color:#666;margin-bottom:4px;display:block;">📄 效果预览</label>
         <div id="tpl-preview-area" style="border:2px solid #eee;border-radius:8px;padding:12px;background:#fafaf7;max-height:300px;overflow-y:auto;font-size:12px;">
           ${renderTemplatePreview(tpl, previewData)}
         </div>
@@ -1780,8 +1794,8 @@ function showTemplateEditor({ templateId, onBack }) {
 
       <div style="display:flex;gap:10px;">
         <button class="btn btn-outline btn-block" id="tpl-edit-cancel">取消</button>
-        <button class="btn btn-outline" id="tpl-edit-export" style="flex-shrink:0;font-size:13px;">导出</button>
-        <button class="btn btn-primary btn-block" id="tpl-edit-save">保存 ${isBuiltin ? '保存为我的模板' : '保存修改'}</button>
+        <button class="btn btn-outline" id="tpl-edit-export" style="flex-shrink:0;font-size:13px;">📤 导出</button>
+        <button class="btn btn-primary btn-block" id="tpl-edit-save">💾 ${isBuiltin ? '保存为我的模板' : '保存修改'}</button>
       </div>
     </div>`;
 
@@ -1814,7 +1828,7 @@ function showTemplateEditor({ templateId, onBack }) {
 
   // 导出模板
   overlay.querySelector('#tpl-edit-export').onclick = async () => {
-    const { getCustomTemplate, exportTemplateAsFile } = await import('./db.js?v=20260711f');
+    const { getCustomTemplate, exportTemplateAsFile } = await import('./db.js?v=20260711e');
     if (isBuiltin) {
       // 内置模板直接导出当前编辑的 JSON
       exportTemplateAsFile({ id: tpl.id, data: tpl });
@@ -1836,7 +1850,7 @@ function showTemplateEditor({ templateId, onBack }) {
     newTpl.source = 'customized';
     newTpl.version = 1;
 
-    const { saveTemplate } = await import('./db.js?v=20260711f');
+    const { saveTemplate } = await import('./db.js?v=20260711e');
     const record = await saveTemplate({ ...newTpl });
     refreshCustomTemplate(record.id, newTpl);
     clearTypeInfoCache();
@@ -1932,18 +1946,18 @@ function replacePreview(template, vars) {
 // ---------- 检查清单面板 ----------
 
 async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
-  const checklists = await (await import('./db.js?v=20260711f')).listChecklists().catch(() => []);
+  const checklists = await (await import('./db.js?v=20260711e')).listChecklists().catch(() => []);
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
-      <h3 style="margin-bottom:12px;">检查清单</h3>
-      <p style="font-size:13px;opacity:0.65;margin-bottom:12px;">常用检查项模板，快速复用，不用每次重新输入</p>
+      <h3 style="margin-bottom:12px;">📋 检查清单</h3>
+      <p style="font-size:13px;color:#999;margin-bottom:12px;">常用检查项模板，快速复用，不用每次重新输入</p>
 
       ${items.length > 0 ? `
         <div style="margin-bottom:16px;">
-          <label style="font-size:13px;color:#666;">保存当前 ${items.length} 项为清单</label>
+          <label style="font-size:13px;color:#666;">💾 保存当前 ${items.length} 项为清单</label>
           <div style="display:flex;gap:8px;margin-top:4px;">
             <input type="text" id="cl-name-input" placeholder="清单名称（如：周例行检查）" style="flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;font-size:13px;">
             <button class="btn btn-primary btn-sm" id="cl-save-btn" style="flex-shrink:0;">保存</button>
@@ -1952,15 +1966,15 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
       ` : ''}
 
       <div>
-        <label style="font-size:13px;color:#666;">已保存的清单</label>
-        ${checklists.length === 0 ? '<p style="opacity:0.65;font-size:13px;margin-top:4px;">暂无清单</p>' : ''}
+        <label style="font-size:13px;color:#666;">📥 已保存的清单</label>
+        ${checklists.length === 0 ? '<p style="color:#999;font-size:13px;margin-top:4px;">暂无清单</p>' : ''}
         ${checklists.map(cl => `
           <div style="display:flex;align-items:center;gap:8px;padding:10px;border:1px solid #eee;border-radius:8px;margin-top:6px;">
             <div style="flex:1;min-width:0;" data-action="load-checklist" data-id="${cl.id}">
-              <div style="font-weight:600;font-size:14px;">${escapeHtml(cl.name)}</div>
-              <div style="font-size:12px;opacity:0.65;">${cl.items.length} 项 · ${new Date(cl.updatedAt).toLocaleDateString('zh-CN')}</div>
+              <div style="font-weight:600;font-size:14px;">📋 ${escapeHtml(cl.name)}</div>
+              <div style="font-size:12px;color:#999;">${cl.items.length} 项 · ${new Date(cl.updatedAt).toLocaleDateString('zh-CN')}</div>
             </div>
-            <button data-action="del-checklist" data-id="${cl.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;">删除</button>
+            <button data-action="del-checklist" data-id="${cl.id}" style="background:none;border:none;font-size:16px;cursor:pointer;padding:4px;">🗑️</button>
           </div>
         `).join('')}
       </div>
@@ -1981,7 +1995,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
       if (!name) { showToast('请输入清单名称'); return; }
       const descItems = items.filter(i => i.description).map(i => ({ description: i.description }));
       if (descItems.length === 0) { showToast('没有可保存的描述项'); return; }
-      await (await import('./db.js?v=20260711f')).saveChecklist(name, descItems);
+      await (await import('./db.js?v=20260711e')).saveChecklist(name, descItems);
       document.body.removeChild(overlay);
       showToast(`清单"${name}"已保存`);
     };
@@ -2002,7 +2016,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
   overlay.querySelectorAll('[data-action="del-checklist"]').forEach(el => {
     el.onclick = async (e) => {
       e.stopPropagation();
-      await (await import('./db.js?v=20260711f')).deleteChecklist(el.dataset.id);
+      await (await import('./db.js?v=20260711e')).deleteChecklist(el.dataset.id);
       document.body.removeChild(overlay);
       showToast('清单已删除');
     };
@@ -2031,24 +2045,41 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
       <div style="text-align:center;margin-bottom:16px;">
-        <div style="font-size:48px;margin-bottom:8px;">${reason === 'limit' ? '' : ''}</div>
+        <div style="font-size:48px;margin-bottom:8px;">${reason === 'limit' ? '📊' : '🔒'}</div>
         <h3 style="margin-bottom:4px;">${reason === 'image-edit' ? 'AI修图需要Pro版' : '升级到Pro版'}</h3>
         <p style="font-size:14px;color:#666;">${message}</p>
         ${usageText ? `<p style="font-size:13px;color:#c0833c;margin-top:4px;">${usageText}</p>` : ''}
       </div>
 
-      <div style="background:#fafaf7;border-radius:10px;padding:14px;margin-bottom:16px;">
-        <h4 style="font-size:14px;margin-bottom:8px;">Pro版权益</h4>
-        <div style="font-size:13px;line-height:2;color:#666;">
-          <div>无限生成报告（免费版每月${FREE_MONTHLY_LIMIT}次）</div>
-          <div>AI智能修图（美化现场照片）</div>
-          <div>所有模板功能全开放</div>
-          <div>优先技术支持</div>
+      <div style="margin-bottom:16px;">
+        <h4 style="font-size:14px;margin-bottom:8px;">💰 选择套餐</h4>
+
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          <div style="flex:1;background:#fdf7f0;border:2px solid #c0833c;border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-size:20px;font-weight:700;color:#c0833c;">¥9.9</div>
+            <div style="font-size:12px;color:#999;">月卡</div>
+            <div style="font-size:11px;color:#666;margin-top:4px;">无限报告<br>AI修图${IMAGE_EDIT_MONTHLY_LIMIT}次/月</div>
+          </div>
+          <div style="flex:1;background:#e8f5e9;border:2px solid #3d7256;border-radius:10px;padding:12px;text-align:center;">
+            <div style="font-size:20px;font-weight:700;color:#3d7256;">¥68</div>
+            <div style="font-size:12px;color:#999;">年卡 <span style="color:#3d7256;font-weight:600;">(¥5.7/月)</span></div>
+            <div style="font-size:11px;color:#666;margin-top:4px;">无限报告<br>AI修图${IMAGE_EDIT_MONTHLY_LIMIT}次/月</div>
+          </div>
+        </div>
+
+        <div style="font-size:12px;color:#666;line-height:1.6;margin-bottom:12px;">
+          <div>✅ 无限生成报告（免费版${FREE_MONTHLY_LIMIT}次/月）</div>
+          <div>✅ AI智能修图（${IMAGE_EDIT_MONTHLY_LIMIT}次/月）</div>
+          <div>✅ 所有模板功能全开放</div>
         </div>
       </div>
 
+      <div style="background:#fdf3e0;border-radius:8px;padding:10px;margin-bottom:12px;font-size:12px;color:#8a6318;text-align:center;">
+        📱 付款后截图联系开发者领取激活码
+      </div>
+
       <div style="margin-bottom:12px;">
-        <label style="font-size:13px;color:#666;margin-bottom:6px;display:block;">请输入激活码</label>
+        <label style="font-size:13px;color:#666;margin-bottom:6px;display:block;">🔑 请输入激活码</label>
         <div style="display:flex;gap:8px;">
           <input type="text" id="upgrade-code-input" placeholder="RTHX-XXXX-XXXX"
             style="flex:1;padding:10px;border:1px solid #e0dbd2;border-radius:8px;font-size:16px;font-family:monospace;text-align:center;text-transform:uppercase;letter-spacing:1px;"
@@ -2058,17 +2089,13 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
         <div id="upgrade-error" style="display:none;color:#c4553d;font-size:12px;margin-top:4px;"></div>
         <div id="upgrade-loading" style="display:none;text-align:center;padding:8px;margin-top:4px;">
           <span class="spinner" style="width:16px;height:16px;margin-right:6px;vertical-align:middle;"></span>
-          <span style="font-size:12px;opacity:0.65;">正在验证...</span>
+          <span style="font-size:12px;color:#999;">正在验证...</span>
         </div>
       </div>
 
-      <p style="font-size:11px;color:#bbb;text-align:center;margin-bottom:14px;">
-        获取激活码请联系开发者 💬
-      </p>
-
       <div style="display:flex;gap:10px;">
         <button class="btn btn-outline btn-block" id="upgrade-cancel-btn">取消</button>
-        ${onSettings ? '<button class="btn btn-block" id="upgrade-settings-btn" style="border:1px solid #ccc;background:#fff;color:#666;font-size:14px;">设置</button>' : ''}
+        ${onSettings ? '<button class="btn btn-block" id="upgrade-settings-btn" style="border:1px solid #ccc;background:#fff;color:#666;font-size:14px;">⚙️ 设置</button>' : ''}
       </div>
     </div>`;
 
@@ -2132,7 +2159,7 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
       console.log('[激活] result:', JSON.stringify(result));
       if (result.success) {
         document.body.removeChild(overlay);
-        showToast('激活成功！已升级为Pro版');
+        showToast('✅ 激活成功！已升级为Pro版');
       } else {
         errorDiv.textContent = result.error || '激活失败，请检查激活码';
         errorDiv.style.display = 'block';
@@ -2165,16 +2192,17 @@ function showSettingsPanel({ onSave }) {
     activationHtml = `
       <div style="background:#f0ebe0;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div style="font-weight:600;font-size:14px;">开发者模式</div>
-          <div style="font-size:12px;opacity:0.65;">无限使用 · 全功能开放</div>
+          <div style="font-weight:600;font-size:14px;">🛠️ 开发者模式</div>
+          <div style="font-size:12px;color:#999;">无限使用 · 全功能开放</div>
         </div>
       </div>`;
   } else if (activation.activated) {
+    const imgUsage = getImageEditUsageThisMonth();
     activationHtml = `
       <div style="background:#e8f5e9;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div style="font-weight:600;font-size:14px;">Pro版</div>
-          <div style="font-size:12px;color:#666;">无限使用 · 全功能开放</div>
+          <div style="font-weight:600;font-size:14px;">🔓 Pro版</div>
+          <div style="font-size:12px;color:#666;">无限报告 · AI修图${imgUsage.remaining}/${IMAGE_EDIT_MONTHLY_LIMIT}次</div>
         </div>
       </div>`;
   } else {
@@ -2185,12 +2213,12 @@ function showSettingsPanel({ onSave }) {
     if (graceRemaining > 0) usageText += `${usageText ? ' + ' : ''}赠送${graceRemaining}次可用`;
     if (!usageText) usageText = `本月${FREE_MONTHLY_LIMIT}次已用完`;
     activationHtml = `
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
+      <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div style="font-weight:600;font-size:14px;">免费版</div>
+          <div style="font-weight:600;font-size:14px;">⚡ 免费版</div>
           <div style="font-size:12px;color:#c0833c;">${usageText}</div>
         </div>
-        <button class="btn btn-sm" id="settings-upgrade-btn" style="background:#ff9800;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap;">升级</button>
+        <button class="btn btn-sm" id="settings-upgrade-btn" style="background:#ff9800;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap;">🔓 升级</button>
       </div>`;
   }
 
@@ -2198,22 +2226,22 @@ function showSettingsPanel({ onSave }) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
-      <h3 style="margin-bottom:12px;">设置</h3>
+      <h3 style="margin-bottom:12px;">⚙️ 设置</h3>
 
       ${activationHtml}
 
       <div style="margin-bottom:12px;">
-        <label style="font-size:13px;color:#666;">公司名称（落款显示）</label>
+        <label style="font-size:13px;color:#666;">🏢 公司名称（落款显示）</label>
         <input type="text" id="settings-company" value="${escapeHtml(presets.company || '')}" placeholder="如：XX公司" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;">
       </div>
 
       <div style="margin-bottom:12px;">
-        <label style="font-size:13px;color:#666;">默认部门/车间</label>
+        <label style="font-size:13px;color:#666;">👤 默认部门/车间</label>
         <input type="text" id="settings-department" value="${escapeHtml(presets.department || '')}" placeholder="如：压榨车间" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:6px;margin-top:4px;box-sizing:border-box;">
       </div>
 
       <div style="margin-bottom:16px;">
-        <label style="font-size:13px;color:#666;">我的部门列表（快捷切换）</label>
+        <label style="font-size:13px;color:#666;">📋 我的部门列表（快捷切换）</label>
         <div id="dept-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;margin-bottom:8px;">
           ${depts.map(d => `<span class="dept-tag" style="background:#f0ebe0;padding:4px 10px;border-radius:12px;font-size:13px;cursor:pointer;" data-dept="${escapeHtml(d)}">${escapeHtml(d)} ✕</span>`).join('')}
         </div>
@@ -2223,19 +2251,19 @@ function showSettingsPanel({ onSave }) {
         </div>
       </div>
 
-      <button class="btn btn-primary btn-block" id="settings-save-btn">保存</button>
+      <button class="btn btn-primary btn-block" id="settings-save-btn">💾 保存</button>
 
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-        <p style="font-size:11px;opacity:0.65;margin-bottom:8px;">数据备份：防止浏览器清空存储导致数据丢失</p>
+        <p style="font-size:11px;color:#999;margin-bottom:8px;">📦 数据备份：防止浏览器清空存储导致数据丢失</p>
         <div style="display:flex;gap:10px;">
-          <button class="btn btn-outline btn-block" id="settings-export-btn" style="font-size:13px;">导出全部数据</button>
-          <button class="btn btn-outline btn-block" id="settings-import-btn" style="font-size:13px;">导入数据恢复</button>
+          <button class="btn btn-outline btn-block" id="settings-export-btn" style="font-size:13px;">📤 导出全部数据</button>
+          <button class="btn btn-outline btn-block" id="settings-import-btn" style="font-size:13px;">📥 导入数据恢复</button>
         </div>
       </div>
 
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-        <p style="font-size:11px;opacity:0.65;margin-bottom:8px;">清除缓存：AI润色历史、修图指令历史等本地缓存</p>
-        <button class="btn btn-outline btn-block" id="settings-clear-history-btn" style="font-size:13px;color:#c4553d;border-color:#e0c0b8;">删除 清除AI历史记录</button>
+        <p style="font-size:11px;color:#999;margin-bottom:8px;">🧹 清除缓存：AI润色历史、修图指令历史等本地缓存</p>
+        <button class="btn btn-outline btn-block" id="settings-clear-history-btn" style="font-size:13px;color:#c4553d;border-color:#e0c0b8;">🗑️ 清除AI历史记录</button>
       </div>
     </div>`;
 
@@ -2244,7 +2272,7 @@ function showSettingsPanel({ onSave }) {
   // 导出数据
   overlay.querySelector('#settings-export-btn').onclick = async () => {
     try {
-      const { exportAllDataAsFile } = await import('./db.js?v=20260711f');
+      const { exportAllDataAsFile } = await import('./db.js?v=20260711e');
       await exportAllDataAsFile();
       showToast('数据已导出，请保存好备份文件');
     } catch (e) {
@@ -2277,7 +2305,7 @@ function showSettingsPanel({ onSave }) {
       if (!file) return;
       showToast('正在导入...');
       try {
-        const { importAllDataFromFile } = await import('./db.js?v=20260711f');
+        const { importAllDataFromFile } = await import('./db.js?v=20260711e');
         const result = await importAllDataFromFile(file);
         document.body.removeChild(overlay);
         showToast(`导入完成：${result.drafts}个草稿、${result.templates}个模板、${result.checklists}个清单、${result.reports}条报告`);
