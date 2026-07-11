@@ -3,7 +3,7 @@
 import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711h';
 import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711h';
 import { getTemplate, listTemplates, refreshCustomTemplate, removeCustomTemplate, isBuiltinTemplate } from '../templates/templates.js';
-import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, getImageEditUsageThisMonth, incrementImageEditUsage, FREE_MONTHLY_LIMIT, IMAGE_EDIT_MONTHLY_LIMIT } from './activate.js?v=20260711h';
+import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, getImageEditUsageThisMonth, incrementImageEditUsage, getPolishUsageThisMonth, incrementPolishUsage, canPolishText, TESTING_MODE, FREE_MONTHLY_LIMIT, IMAGE_EDIT_MONTHLY_LIMIT, IMAGE_EDIT_TESTING_LIMIT, POLISH_MONTHLY_LIMIT } from './activate.js?v=20260711h';
 import { showToast, registerOverlay, closeAllOverlays, showConfirm, escapeHtml } from './utils.js?v=20260711h';
 
 const pageContainer = document.getElementById('page-container');
@@ -123,9 +123,10 @@ function getIndustryColor(industry) {
 /** 生成激活状态文本（集成到 presets-bar 中） */
 function getActivationStatusHtml() {
   const activation = checkActivation();
-  if (activation.activated) {
+  if (activation.activated && !TESTING_MODE) {
     return '<span style="background:#2c5cc5;color:#fff;font-size:10px;padding:1px 5px;border-radius:2px;font-weight:600;">PRO</span>';
   }
+  // 测试模式或未激活：显示剩余次数
   const usage = getUsageThisMonth();
   const mainRemaining = usage.remaining;
   const graceRemaining = usage.graceRemaining;
@@ -712,36 +713,40 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
 
         // 修图权限检查
         if (!isFeatureAllowed('image-edit')) {
-          const activation = checkActivation();
           const imgUsage = getImageEditUsageThisMonth();
-          if (activation.activated) {
-            // Pro 用户本月修图次数用完
-            showToast(`本月AI修图次数已用完（${IMAGE_EDIT_MONTHLY_LIMIT}次/月），下月自动恢复`, 4000);
-            return;
+          if (TESTING_MODE) {
+            // 测试模式：直接提示次数用完
+            showToast(`本月AI修图次数已用完（${imgUsage.limit}次/月），下月自动恢复`, 4000);
           } else {
-            // 免费版用户无修图权限
-            showUpgradePanel({
-              reason: 'image-edit',
-              message: `AI修图是Pro版功能，升级后即可使用（每月${IMAGE_EDIT_MONTHLY_LIMIT}次）`,
-              currentUsage: getUsageThisMonth(),
-              onActivate: async (code) => {
-              const result = await activateCode(code);
-              if (result.success) {
-                renderItemForm({
-                  item: {
-                    description: document.getElementById('item-desc')?.value || desc,
-                    beforePhoto: window._formBeforePhoto !== undefined ? window._formBeforePhoto : beforePhoto,
-                    afterPhoto: window._formAfterPhoto !== undefined ? window._formAfterPhoto : afterPhoto,
-                  },
-                  index, reportType, onSave, onCancel, onOptimize,
-                });
-              }
-              return result;
-            },
-          });
+            const activation = checkActivation();
+            if (activation.activated) {
+              // Pro 用户本月修图次数用完
+              showToast(`本月AI修图次数已用完（${imgUsage.limit}次/月），下月自动恢复`, 4000);
+            } else {
+              // 免费版用户无修图权限 → 升级面板
+              showUpgradePanel({
+                reason: 'image-edit',
+                message: `AI修图是Pro版功能，升级后即可使用（每月${IMAGE_EDIT_MONTHLY_LIMIT}次）`,
+                currentUsage: getUsageThisMonth(),
+                onActivate: async (code) => {
+                const result = await activateCode(code);
+                if (result.success) {
+                  renderItemForm({
+                    item: {
+                      description: document.getElementById('item-desc')?.value || desc,
+                      beforePhoto: window._formBeforePhoto !== undefined ? window._formBeforePhoto : beforePhoto,
+                      afterPhoto: window._formAfterPhoto !== undefined ? window._formAfterPhoto : afterPhoto,
+                    },
+                    index, reportType, onSave, onCancel, onOptimize,
+                  });
+                }
+                return result;
+              },
+            });
+            }
+          }
           return;
         }
-        }  // close if (!isFeatureAllowed)
 
         showImageEditPanel(slotId, currentPhoto, (editedImage) => {
           if (slotId === 'slot-before') {
@@ -2281,13 +2286,14 @@ function showSettingsPanel({ onSave }) {
     if (mainRemaining > 0) usageText += `本月${FREE_MONTHLY_LIMIT}次（剩余${mainRemaining}）`;
     if (graceRemaining > 0) usageText += `${usageText ? ' + ' : ''}赠送${graceRemaining}次可用`;
     if (!usageText) usageText = `本月${FREE_MONTHLY_LIMIT}次已用完`;
+    const upgradeBtn = TESTING_MODE ? '' : '<button class="btn btn-sm" id="settings-upgrade-btn" style="background:#e07b20;color:#fff;border:none;padding:8px 14px;border-radius:2px;font-size:13px;font-weight:600;white-space:nowrap;">升级</button>';
     activationHtml = `
       <div style="background:#fef3e6;border:1px solid #e07b20;border-radius:2px;padding:10px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
         <div>
-          <div style="font-weight:600;font-size:14px;">免费版</div>
+          <div style="font-weight:600;font-size:14px;">${TESTING_MODE ? '测试版' : '免费版'}</div>
           <div style="font-size:12px;color:var(--text-secondary);">${usageText}</div>
         </div>
-        <button class="btn btn-sm" id="settings-upgrade-btn" style="background:#e07b20;color:#fff;border:none;padding:8px 14px;border-radius:2px;font-size:13px;font-weight:600;white-space:nowrap;">升级</button>
+        ${upgradeBtn}
       </div>`;
   }
 
@@ -2499,7 +2505,7 @@ function showFeedbackModal() {
   overlay.querySelector('#feedback-submit-btn').onclick = () => {
     const text = overlay.querySelector('#feedback-text').value.trim();
     if (!text) { showToast('请填写反馈内容'); return; }
-    const context = `[意见反馈] ${text} (Pro版 v2.7, ${ua}, 本月已用${usage.used}次)`;
+    const context = `[意见反馈] ${text} (${TESTING_MODE ? '测试版' : 'Pro版'} v2.7, ${ua}, 本月已用${usage.used}次)`;
     navigator.clipboard.writeText(context).then(() => {
       showToast(`已复制，请到微信粘贴发送给 ${DEV_WECHAT}`, 3000);
       openWechat();

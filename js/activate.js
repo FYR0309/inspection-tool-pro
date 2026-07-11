@@ -31,12 +31,19 @@ const VALID_HASHES = [
   'b33ded1ff363aa09b05d4d0636b8a41e54da3f5ec99c5216e34f89e88400c99a',
 ];
 
+// ---------- 模式开关 ----------
+// true  = 测试模式：隐藏收费，AI修图5次/月，AI润色10次/月
+// false = 付费模式：恢复升级面板、Pro版限制
+const TESTING_MODE = true;
+
 // ---------- 常量 ----------
 
 const FREE_MONTHLY_LIMIT = 5;
 const ACTIVATION_KEY = '_iap_v';  // 故意用不明显的 key 名
 const GRACE_LIMIT = 1;  // 免费版超限后可额外生成 1 份（软性限制）
 const IMAGE_EDIT_MONTHLY_LIMIT = 20;  // Pro 版每月 AI 修图次数上限
+const IMAGE_EDIT_TESTING_LIMIT = 5;   // 测试模式每月 AI 修图次数
+const POLISH_MONTHLY_LIMIT = 10;      // 测试模式每月 AI 润色次数
 
 // 开发者专用哈希（激活码 RTHX-DEV0-DEV0）
 const DEV_HASH = 'b33ded1ff363aa09b05d4d0636b8a41e54da3f5ec99c5216e34f89e88400c99a';
@@ -222,11 +229,8 @@ function getImageEditUsageThisMonth() {
   const data = readActivationData();
   const monthKey = getMonthKey() + '_img';
   const used = (data && data.usage) ? (data.usage[monthKey] || 0) : 0;
-  return {
-    used,
-    limit: IMAGE_EDIT_MONTHLY_LIMIT,
-    remaining: Math.max(0, IMAGE_EDIT_MONTHLY_LIMIT - used),
-  };
+  const limit = TESTING_MODE ? IMAGE_EDIT_TESTING_LIMIT : IMAGE_EDIT_MONTHLY_LIMIT;
+  return { used, limit, remaining: Math.max(0, limit - used) };
 }
 
 /** 递增本月修图用量，返回是否还能继续 */
@@ -235,13 +239,49 @@ function incrementImageEditUsage() {
   const monthKey = getMonthKey() + '_img';
   if (!data.usage) data.usage = {};
   data.usage[monthKey] = (data.usage[monthKey] || 0) + 1;
+  const limit = TESTING_MODE ? IMAGE_EDIT_TESTING_LIMIT : IMAGE_EDIT_MONTHLY_LIMIT;
   writeActivationData(data);
-  return data.usage[monthKey] < IMAGE_EDIT_MONTHLY_LIMIT;
+  return data.usage[monthKey] < limit;
+}
+
+/** 获取本月润色用量 */
+function getPolishUsageThisMonth() {
+  const data = readActivationData();
+  const monthKey = getMonthKey() + '_polish';
+  const used = (data && data.usage) ? (data.usage[monthKey] || 0) : 0;
+  const limit = POLISH_MONTHLY_LIMIT;
+  return { used, limit, remaining: Math.max(0, limit - used) };
+}
+
+/** 递增本月润色用量，返回是否还能继续 */
+function incrementPolishUsage() {
+  const data = readActivationData() || {};
+  const monthKey = getMonthKey() + '_polish';
+  if (!data.usage) data.usage = {};
+  data.usage[monthKey] = (data.usage[monthKey] || 0) + 1;
+  writeActivationData(data);
+  return data.usage[monthKey] < POLISH_MONTHLY_LIMIT;
 }
 
 /** 检查功能是否可用 */
 function isFeatureAllowed(feature) {
   const activation = checkActivation();
+
+  // 测试模式：所有功能免费开放，但受月限控制
+  if (TESTING_MODE) {
+    switch (feature) {
+      case 'image-edit': {
+        const usage = getImageEditUsageThisMonth();
+        return usage.remaining > 0;
+      }
+      case 'unlimited-reports':
+        return true;
+      default:
+        return true;
+    }
+  }
+
+  // 付费模式
   if (activation.activated) {
     // Pro 版：修图有月限
     if (feature === 'image-edit') {
@@ -262,6 +302,18 @@ function isFeatureAllowed(feature) {
   }
 }
 
+/** 检查润色是否可用（测试模式 10次/月，付费模式无限制） */
+function canPolishText() {
+  if (TESTING_MODE) {
+    const activation = checkActivation();
+    if (activation.activated) return { allowed: true };
+    const usage = getPolishUsageThisMonth();
+    return { allowed: usage.remaining > 0, usage };
+  }
+  // 付费模式：AI润色始终可用
+  return { allowed: true };
+}
+
 /** 检查是否可以生成报告 */
 function canGenerateReport() {
   const activation = checkActivation();
@@ -273,6 +325,10 @@ function canGenerateReport() {
   }
   if (usage.graceRemaining > 0) {
     return { allowed: true, reason: 'grace', message: '本月免费额度已用完，本次为赠送次数' };
+  }
+  // 测试模式不提示升级
+  if (TESTING_MODE) {
+    return { allowed: false, reason: 'limit', message: '本月报告次数已用完（5次），下月自动恢复' };
   }
   return { allowed: false, reason: 'limit', message: '本月免费额度已用完（5次），请升级Pro版' };
 }
@@ -290,10 +346,16 @@ export {
   incrementUsage,
   getImageEditUsageThisMonth,
   incrementImageEditUsage,
+  getPolishUsageThisMonth,
+  incrementPolishUsage,
   isFeatureAllowed,
   canGenerateReport,
+  canPolishText,
   clearUsage,
   deactivate,
+  TESTING_MODE,
   FREE_MONTHLY_LIMIT,
   IMAGE_EDIT_MONTHLY_LIMIT,
+  IMAGE_EDIT_TESTING_LIMIT,
+  POLISH_MONTHLY_LIMIT,
 };

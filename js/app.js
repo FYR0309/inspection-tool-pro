@@ -4,7 +4,7 @@ import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets
 import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260711h';
 import { getTemplate, loadCustomTemplates } from '../templates/templates.js';
 import { callDoubaoOptimize } from './ai.js?v=20260711h';
-import { checkActivation, canGenerateReport, incrementUsage, activateCode, getUsageThisMonth, isFeatureAllowed } from './activate.js?v=20260711h';
+import { checkActivation, canGenerateReport, incrementUsage, activateCode, getUsageThisMonth, isFeatureAllowed, canPolishText, incrementPolishUsage, TESTING_MODE, POLISH_MONTHLY_LIMIT } from './activate.js?v=20260711h';
 import {
   showToast,
   renderHomePage,
@@ -320,6 +320,13 @@ function showItemForm(editIndex, photoOverride, prefill) {
 // ---------- AI 润色 ----------
 
 async function showOptimizePage(text, editIndex) {
+  // AI 润色次数检查
+  const polishCheck = canPolishText();
+  if (!polishCheck.allowed) {
+    showToast(`本月AI润色次数已用完（${POLISH_MONTHLY_LIMIT}次/月），下月自动恢复`, 3000);
+    return;
+  }
+
   // 暂存当前表单照片，防止返回时丢失
   const photoOverride = {
     beforePhoto: window._formBeforePhoto,
@@ -352,6 +359,9 @@ async function showOptimizePage(text, editIndex) {
     const options = await callDoubaoOptimize(text, state.reportType, abortController.signal, aiPromptTag);
 
     if (cancelled) return; // 已取消，不渲染结果
+
+    // 润色成功，递增计数
+    if (TESTING_MODE) incrementPolishUsage();
 
     renderOptimizePage({
       text,
@@ -439,22 +449,26 @@ async function showGeneratePage() {
       if (!state.activation.activated) {
         const canGen = canGenerateReport();
         if (!canGen.allowed) {
-          showUpgradePanel({
-            reason: 'limit',
-            message: canGen.message,
-            currentUsage: getUsageThisMonth(),
-            onActivate: async (code) => {
-              const result = await activateCode(code);
-              if (result.success) {
-                state.activation = checkActivation();
-                showToast('激活成功！已升级为Pro版');
-                showGeneratePage();  // 刷新生成页
-              } else {
-                return { success: false, error: result.error };
-              }
-              return { success: true };
-            },
-          });
+          if (TESTING_MODE) {
+            showToast(canGen.message, 3000);
+          } else {
+            showUpgradePanel({
+              reason: 'limit',
+              message: canGen.message,
+              currentUsage: getUsageThisMonth(),
+              onActivate: async (code) => {
+                const result = await activateCode(code);
+                if (result.success) {
+                  state.activation = checkActivation();
+                  showToast('激活成功！已升级为Pro版');
+                  showGeneratePage();  // 刷新生成页
+                } else {
+                  return { success: false, error: result.error };
+                }
+                return { success: true };
+              },
+            });
+          }
           return;
         }
       }
