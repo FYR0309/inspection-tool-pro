@@ -35,6 +35,9 @@ const FREE_MONTHLY_LIMIT = 5;
 const ACTIVATION_KEY = '_iap_v';  // 故意用不明显的 key 名
 const GRACE_LIMIT = 1;  // 免费版超限后可额外生成 1 份（软性限制）
 
+// 开发者专用哈希（激活码 RTHX-DEV0-DEV0）
+const DEV_HASH = 'b33ded1ff363aa09b05d4d0636b8a41e54da3f5ec99c5216e34f89e88400c99a';
+
 // ---------- 工具函数 ----------
 
 /** 规范化激活码：去分隔符、转大写 */
@@ -88,7 +91,13 @@ function writeActivationData(data) {
 
 /** 简单 checksum（防 casual tampering） */
 function computeChecksum(data) {
-  const str = JSON.stringify(data, Object.keys(data).sort());
+  // 排除 _cs 字段自身，确保写入和读取时计算一致
+  const obj = {};
+  for (const key of Object.keys(data).sort()) {
+    if (key === '_cs') continue;
+    obj[key] = data[key];
+  }
+  const str = JSON.stringify(obj);
   let hash = 5381;
   for (let i = 0; i < str.length; i++) {
     hash = ((hash << 5) + hash + str.charCodeAt(i)) | 0;
@@ -102,9 +111,11 @@ function computeChecksum(data) {
 function checkActivation() {
   const data = readActivationData();
   if (data && data.activated && data.codeHash) {
+    const isDev = data.codeHash === DEV_HASH;
     return {
       activated: true,
       activatedAt: data.activatedAt || 0,
+      dev: isDev,  // 开发者模式：永久有效、无限制
     };
   }
   return { activated: false };
@@ -188,9 +199,10 @@ function incrementUsage() {
   writeActivationData(data);
 }
 
-/** 清除用量计数 */
+/** 清除用量计数（保留激活状态，只重置 usage） */
 function clearUsage() {
-  const data = readActivationData() || {};
+  const data = readActivationData();
+  if (!data) return;  // 无数据时不写入，防止覆盖
   data.usage = {};
   writeActivationData(data);
 }
@@ -198,7 +210,7 @@ function clearUsage() {
 /** 检查功能是否可用 */
 function isFeatureAllowed(feature) {
   const activation = checkActivation();
-  if (activation.activated) return true;  // Pro 版全开放
+  if (activation.activated) return true;  // Pro 版 + 开发者全开放
 
   // 免费版功能限制
   switch (feature) {
@@ -214,7 +226,7 @@ function isFeatureAllowed(feature) {
 /** 检查是否可以生成报告 */
 function canGenerateReport() {
   const activation = checkActivation();
-  if (activation.activated) return { allowed: true };
+  if (activation.activated) return { allowed: true };  // Pro/Dev 无限制
 
   const usage = getUsageThisMonth();
   if (usage.remaining > 0) {

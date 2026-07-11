@@ -1,16 +1,10 @@
 // templates.js — 模板注册表（内置 + 自定义）
 // 导出所有内置模板，支持按 id 查找，同时合并 IndexedDB 自定义模板
 
-import safety from './safety.json' with { type: 'json' };
-import s5s from './5s.json' with { type: 'json' };
-import company from './company.json' with { type: 'json' };
 import universal from './universal.json' with { type: 'json' };
 
-/** 所有内置模板 */
+/** 所有内置模板（当前仅通用模板，行业模板由客户自行导入） */
 const builtinTemplates = {
-  safety,
-  '5s': s5s,
-  company,
   universal,
 };
 
@@ -23,7 +17,7 @@ let customTemplates = {};
 /** 加载自定义模板（app.js 初始化时调用） */
 async function loadCustomTemplates() {
   try {
-    const { listCustomTemplates } = await import('../js/db.js?v=20260711a');
+    const { listCustomTemplates } = await import('../js/db.js?v=20260711b');
     const records = await listCustomTemplates();
     customTemplates = {};
     records.forEach(r => {

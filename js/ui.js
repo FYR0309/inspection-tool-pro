@@ -1,9 +1,9 @@
 // ui.js — 所有页面视图的渲染函数
 
-import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711a';
-import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711a';
+import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711b';
+import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711b';
 import { getTemplate, listTemplates, refreshCustomTemplate, removeCustomTemplate, isBuiltinTemplate } from '../templates/templates.js';
-import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, FREE_MONTHLY_LIMIT } from './activate.js?v=20260711a';
+import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, FREE_MONTHLY_LIMIT } from './activate.js?v=20260711b';
 
 const pageContainer = document.getElementById('page-container');
 
@@ -212,7 +212,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   // 加载报告历史
   let reports = [];
   try {
-    const { listReports } = await import('./db.js?v=20260711a');
+    const { listReports } = await import('./db.js?v=20260711b');
     reports = await listReports();
   } catch (e) { /* ignore */ }
 
@@ -329,7 +329,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
         label: '撤回',
         onUndo: () => {
           // 恢复：重新读取（草稿还在 IndexedDB 中）
-          import('./db.js?v=20260711a').then(({ listDrafts }) => {
+          import('./db.js?v=20260711b').then(({ listDrafts }) => {
             listDrafts().then(newDrafts => {
               renderHomePage({ drafts: newDrafts, onSelectType });
             });
@@ -337,7 +337,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
         },
         onTimeout: () => {
           // 超时后真正删除
-          import('./db.js?v=20260711a').then(({ deleteDraft }) => {
+          import('./db.js?v=20260711b').then(({ deleteDraft }) => {
             deleteDraft(draftId).catch(() => {});
           });
         },
@@ -385,7 +385,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       const tplId = card.dataset.id;
       showTemplateEditor({ templateId: tplId, onBack: () => {
-        import('./db.js?v=20260711a').then(({ listDrafts }) => {
+        import('./db.js?v=20260711b').then(({ listDrafts }) => {
           listDrafts().then(newDrafts => renderHomePage({ drafts: newDrafts, onSelectType }));
         });
       }});
@@ -396,7 +396,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (action === 'export-template') {
       e.stopPropagation();
       const tplId = card.dataset.id;
-      import('./db.js?v=20260711a').then(({ getCustomTemplate, exportTemplateAsFile }) => {
+      import('./db.js?v=20260711b').then(({ getCustomTemplate, exportTemplateAsFile }) => {
         getCustomTemplate(tplId).then(record => {
           if (record) exportTemplateAsFile(record);
         });
@@ -408,7 +408,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (action === 'delete-template') {
       e.stopPropagation();
       const tplId = card.dataset.id;
-      import('./db.js?v=20260711a').then(({ deleteTemplate }) => {
+      import('./db.js?v=20260711b').then(({ deleteTemplate }) => {
         deleteTemplate(tplId).then(() => {
           // 同步删除原始 .docx 存储
           import('./docx-template-cloner.js').then(({ deleteOriginalTemplate }) => {
@@ -416,7 +416,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
           }).catch(() => {});
           removeCustomTemplate(tplId);
           clearTypeInfoCache();
-          import('./db.js?v=20260711a').then(({ listDrafts }) => {
+          import('./db.js?v=20260711b').then(({ listDrafts }) => {
             listDrafts().then(newDrafts => {
               renderHomePage({ drafts: newDrafts, onSelectType });
             });
@@ -433,7 +433,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (delReportBtn) {
       e.stopPropagation();
       const rptId = delReportBtn.dataset.id;
-      import('./db.js?v=20260711a').then(async ({ deleteReport, listDrafts }) => {
+      import('./db.js?v=20260711b').then(async ({ deleteReport, listDrafts }) => {
         await deleteReport(rptId);
         const d = await listDrafts();
         renderHomePage({ drafts: d, onSelectType });
@@ -446,12 +446,12 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       showToast('正在重新生成报告...');
       try {
-        const { listReports } = await import('./db.js?v=20260711a');
+        const { listReports } = await import('./db.js?v=20260711b');
         const all = await listReports();
         const rpt = all.find(r => r.id === regenBtn.dataset.id);
         if (!rpt) { showToast('报告数据已丢失'); return; }
 
-        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711a');
+        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711b');
         const { getTemplate } = await import('../templates/templates.js');
         const tpl = getTemplate(rpt.type);
         loadTemplate(tpl);
@@ -473,35 +473,15 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     }
   });
 
-  // 设置栏点击 → 弹出设置面板或升级面板
+  // 设置栏点击 → 始终弹出设置面板（激活/升级在设置面板内处理）
   const presetsBar = document.getElementById('presets-bar');
   if (presetsBar) {
     presetsBar.onclick = () => {
-      const action = getActivationAction();
-      if (action === 'show-upgrade') {
-        showUpgradePanel({
-          reason: 'upgrade',
-          message: '升级Pro版解锁无限报告 + AI修图功能',
-          currentUsage: getUsageThisMonth(),
-          onActivate: async (code) => {
-            const result = await activateCode(code);
-            return result;
-          },
-          onSettings: () => {
-            showSettingsPanel({ onSave: () => {
-              import('./db.js?v=20260711a').then(({ listDrafts }) => {
-                listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
-              });
-            }});
-          },
+      showSettingsPanel({ onSave: () => {
+        import('./db.js?v=20260711b').then(({ listDrafts }) => {
+          listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
         });
-      } else {
-        showSettingsPanel({ onSave: () => {
-          import('./db.js?v=20260711a').then(({ listDrafts }) => {
-            listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
-          });
-        }});
-      }
+      }});
     };
   }
 
@@ -510,7 +490,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     const importBtn = document.getElementById('import-template-btn');
     if (importBtn) {
       importBtn.onclick = () => showImportPanel({ onSelectType, onBack: (jumpToTemplateId) => {
-        import('./db.js?v=20260711a').then(({ listDrafts }) => {
+        import('./db.js?v=20260711b').then(({ listDrafts }) => {
           listDrafts().then(d => {
             renderHomePage({ drafts: d, onSelectType });
             if (jumpToTemplateId) {
@@ -780,7 +760,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
     const voiceText = document.getElementById('voice-text');
     statusDiv.style.display = 'block';
     voiceText.textContent = '正在聆听...';
-    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711a');
+    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711b');
     window._voiceRecognition = startVoiceRecognition({
       onResult: (text) => {
         voiceText.textContent = text;
@@ -1069,7 +1049,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
     editVoiceStatus.style.display = 'block';
     editVoiceText.textContent = '正在聆听...';
     try {
-      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711a');
+      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711b');
       startVoiceRecognition({
         onResult: (text) => {
           promptInput.value = text;
@@ -1478,7 +1458,7 @@ function showImportPanel({ onSelectType, onBack }) {
         const tpl = JSON.parse(text);
         if (!tpl.id || !tpl.columns) throw new Error('JSON 格式不正确：缺少 id 或 columns');
 
-        const { saveTemplate } = await import('./db.js?v=20260711a');
+        const { saveTemplate } = await import('./db.js?v=20260711b');
         const record = await saveTemplate({ ...tpl, source: 'imported', isBuiltin: false });
         refreshCustomTemplate(record.id, tpl);
         clearTypeInfoCache();
@@ -1506,7 +1486,7 @@ function showImportPanel({ onSelectType, onBack }) {
           setTimeout(() => {
             document.body.removeChild(overlay);
             showManualBuilder({ onSave: async (tpl) => {
-              const { saveTemplate } = await import('./db.js?v=20260711a');
+              const { saveTemplate } = await import('./db.js?v=20260711b');
               const record = await saveTemplate({ ...tpl, source: 'manual', isBuiltin: false });
               refreshCustomTemplate(record.id, tpl);
               clearTypeInfoCache();
@@ -1635,7 +1615,7 @@ function showTemplateConfirm(parseResult, { onBack }) {
       else if (sel.value === 'remark') template.columns[i].field = '_remark';
     });
 
-    const { saveTemplate } = await import('./db.js?v=20260711a');
+    const { saveTemplate } = await import('./db.js?v=20260711b');
     const record = await saveTemplate({ ...template, source: 'docx-imported', isBuiltin: false });
     refreshCustomTemplate(record.id, template);
     clearTypeInfoCache();
@@ -1838,7 +1818,7 @@ function showTemplateEditor({ templateId, onBack }) {
     newTpl.source = 'customized';
     newTpl.version = 1;
 
-    const { saveTemplate } = await import('./db.js?v=20260711a');
+    const { saveTemplate } = await import('./db.js?v=20260711b');
     const record = await saveTemplate({ ...newTpl });
     refreshCustomTemplate(record.id, newTpl);
     clearTypeInfoCache();
@@ -1921,7 +1901,7 @@ function replacePreview(template, vars) {
 // ---------- 检查清单面板 ----------
 
 async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
-  const checklists = await (await import('./db.js?v=20260711a')).listChecklists().catch(() => []);
+  const checklists = await (await import('./db.js?v=20260711b')).listChecklists().catch(() => []);
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
@@ -1970,7 +1950,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
       if (!name) { showToast('请输入清单名称'); return; }
       const descItems = items.filter(i => i.description).map(i => ({ description: i.description }));
       if (descItems.length === 0) { showToast('没有可保存的描述项'); return; }
-      await (await import('./db.js?v=20260711a')).saveChecklist(name, descItems);
+      await (await import('./db.js?v=20260711b')).saveChecklist(name, descItems);
       document.body.removeChild(overlay);
       showToast(`清单"${name}"已保存`);
     };
@@ -1991,7 +1971,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
   overlay.querySelectorAll('[data-action="del-checklist"]').forEach(el => {
     el.onclick = async (e) => {
       e.stopPropagation();
-      await (await import('./db.js?v=20260711a')).deleteChecklist(el.dataset.id);
+      await (await import('./db.js?v=20260711b')).deleteChecklist(el.dataset.id);
       document.body.removeChild(overlay);
       showToast('清单已删除');
     };
@@ -2137,12 +2117,46 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
 function showSettingsPanel({ onSave }) {
   const presets = getPresets();
   const depts = presets.departments || [];
+  const activation = checkActivation();
+  const usage = getUsageThisMonth();
+
+  // 激活状态区块 HTML
+  let activationHtml = '';
+  if (activation.dev) {
+    activationHtml = `
+      <div style="background:#f0ebe0;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-weight:600;font-size:14px;">🛠️ 开发者模式</div>
+          <div style="font-size:12px;color:#999;">无限使用 · 全功能开放</div>
+        </div>
+      </div>`;
+  } else if (activation.activated) {
+    activationHtml = `
+      <div style="background:#e8f5e9;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-weight:600;font-size:14px;">🔓 Pro版</div>
+          <div style="font-size:12px;color:#666;">无限使用 · 全功能开放</div>
+        </div>
+      </div>`;
+  } else {
+    const remaining = usage.remaining + usage.graceRemaining;
+    activationHtml = `
+      <div style="background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-weight:600;font-size:14px;">⚡ 免费版</div>
+          <div style="font-size:12px;color:#c0833c;">本月剩余 ${remaining} 次报告（共${FREE_MONTHLY_LIMIT}次）</div>
+        </div>
+        <button class="btn btn-sm" id="settings-upgrade-btn" style="background:#ff9800;color:#fff;border:none;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;white-space:nowrap;">🔓 升级</button>
+      </div>`;
+  }
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
       <h3 style="margin-bottom:12px;">⚙️ 设置</h3>
+
+      ${activationHtml}
 
       <div style="margin-bottom:12px;">
         <label style="font-size:13px;color:#666;">🏢 公司名称（落款显示）</label>
@@ -2169,6 +2183,30 @@ function showSettingsPanel({ onSave }) {
     </div>`;
 
   document.body.appendChild(overlay);
+
+  // 升级按钮 → 弹出升级面板
+  const upgradeBtn = overlay.querySelector('#settings-upgrade-btn');
+  if (upgradeBtn) {
+    upgradeBtn.onclick = () => {
+      document.body.removeChild(overlay);
+      showUpgradePanel({
+        reason: 'upgrade',
+        message: '升级Pro版解锁无限报告 + AI修图功能',
+        currentUsage: usage,
+        onActivate: async (code) => {
+          const result = await activateCode(code);
+          if (result.success) {
+            // 刷新设置面板
+            showSettingsPanel({ onSave });
+          }
+          return result;
+        },
+        onSettings: () => {
+          showSettingsPanel({ onSave });
+        },
+      });
+    };
+  }
 
   overlay.addEventListener('click', (e) => {
     if (e.target === overlay) { document.body.removeChild(overlay); }

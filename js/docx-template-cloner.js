@@ -22,7 +22,7 @@ const NS = {
 /** 将原始 .docx 模板文件存入 IndexedDB */
 async function storeOriginalTemplate(templateId, file) {
   const buffer = await file.arrayBuffer();
-  const { saveTemplate } = await import('./db.js?v=20260711a');
+  const { saveTemplate } = await import('./db.js?v=20260711b');
   // 以 base64 存储（IndexedDB 不能直接存 ArrayBuffer 的某些情况）
   const base64 = arrayBufferToBase64(buffer);
   await saveTemplate({
@@ -36,7 +36,7 @@ async function storeOriginalTemplate(templateId, file) {
 
 /** 从 IndexedDB 取回原始 .docx */
 async function loadOriginalTemplate(templateId) {
-  const { getCustomTemplate } = await import('./db.js?v=20260711a');
+  const { getCustomTemplate } = await import('./db.js?v=20260711b');
   const record = await getCustomTemplate(templateId + '_original');
   if (!record || !record.data || !record.data.docxBase64) return null;
   return base64ToArrayBuffer(record.data.docxBase64);
@@ -44,7 +44,7 @@ async function loadOriginalTemplate(templateId) {
 
 /** 删除原始 .docx 存储 */
 async function deleteOriginalTemplate(templateId) {
-  const { deleteTemplate } = await import('./db.js?v=20260711a');
+  const { deleteTemplate } = await import('./db.js?v=20260711b');
   try { await deleteTemplate(templateId + '_original'); } catch (e) { /* ignore */ }
 }
 
