@@ -250,12 +250,26 @@ async function parseDocxTemplate(file) {
   // 6. 组装模板 JSON
   const templateName = titleText || `导入模板_${new Date().toISOString().slice(0, 10)}`;
 
+  // 构建 titleTemplate：使用提取到的标题，或默认值
+  const titleTemplate = titleText || '{{department}}检查报告';
+
+  // 构建 overviewTemplate：默认概述文字
+  const overviewTemplate = '本次共检查出{{total}}项问题，已完成整改{{done}}项，剩余{{remain}}项待跟进。';
+
+  // 构建 footerTemplate：签名行转为落款行
+  const footerLines = signatureText
+    ? signatureText.split(/[\s]{2,}/).filter(Boolean).map(s => s.trim())
+    : ['{{company}}', '    {{department}}', '{{date}}'];
+
   const template = {
     id: 'tpl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
     name: templateName,
     industry: '',
     description: '',
     overviewType: 'generic',
+
+    titleTemplate,
+    overviewTemplate,
 
     page: {
       margins: margins || { top: 1213, bottom: 1440, left: 1123, right: 1123 },
@@ -295,6 +309,8 @@ async function parseDocxTemplate(file) {
 
     hasSignatures: !!signatureText,
     signatureText: signatureText || '',
+
+    footerTemplate: { lines: footerLines },
 
     footer: { font: '宋体', size: 28, spacing: { after: 200 } },
 

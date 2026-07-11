@@ -253,6 +253,13 @@ textarea.form-input {
   transition: border-color 0.3s, background 0.3s;
 }
 
+/* 空槽位缩至 80px 高，有照片恢复全尺寸 */
+.photo-slot:not(.has-photo) {
+  aspect-ratio: auto;
+  min-height: 80px;
+  max-height: 100px;
+}
+
 /* 空槽位呼吸动画 — 暗示可点击 */
 .photo-slot:not(.has-photo) {
   animation: photoBreathe 2.4s ease-in-out infinite;

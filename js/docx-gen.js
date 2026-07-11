@@ -1,7 +1,7 @@
 // docx-gen.js — Word 文档生成引擎（模板驱动）
 // 依赖全局 docx 对象，通过 JSON 模板配置报告格式
 
-import { compressImage } from './utils.js?v=20260711d';
+import { compressImage } from './utils.js?v=20260711e';
 
 const { Document, Packer, Paragraph, Table, TableRow, TableCell,
         ImageRun, TextRun, AlignmentType, WidthType, BorderStyle,
