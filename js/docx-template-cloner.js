@@ -7,6 +7,8 @@
 //   2. 生成报告时：loadOriginalTemplate(id) → 取回 ArrayBuffer
 //   3. cloneTemplateDocx(buffer, items, imageMap) → 插入数据 → 下载
 
+import { compressImage } from './utils.js?v=20260711d';
+
 // ---------- OOXML 命名空间 ----------
 
 const NS = {
@@ -22,7 +24,7 @@ const NS = {
 /** 将原始 .docx 模板文件存入 IndexedDB */
 async function storeOriginalTemplate(templateId, file) {
   const buffer = await file.arrayBuffer();
-  const { saveTemplate } = await import('./db.js?v=20260711c');
+  const { saveTemplate } = await import('./db.js?v=20260711d');
   // 以 base64 存储（IndexedDB 不能直接存 ArrayBuffer 的某些情况）
   const base64 = arrayBufferToBase64(buffer);
   await saveTemplate({
@@ -36,7 +38,7 @@ async function storeOriginalTemplate(templateId, file) {
 
 /** 从 IndexedDB 取回原始 .docx */
 async function loadOriginalTemplate(templateId) {
-  const { getCustomTemplate } = await import('./db.js?v=20260711c');
+  const { getCustomTemplate } = await import('./db.js?v=20260711d');
   const record = await getCustomTemplate(templateId + '_original');
   if (!record || !record.data || !record.data.docxBase64) return null;
   return base64ToArrayBuffer(record.data.docxBase64);
@@ -44,7 +46,7 @@ async function loadOriginalTemplate(templateId) {
 
 /** 删除原始 .docx 存储 */
 async function deleteOriginalTemplate(templateId) {
-  const { deleteTemplate } = await import('./db.js?v=20260711c');
+  const { deleteTemplate } = await import('./db.js?v=20260711d');
   try { await deleteTemplate(templateId + '_original'); } catch (e) { /* ignore */ }
 }
 
@@ -70,31 +72,7 @@ function dataUrlToBase64(dataUrl) {
 
 /** 图片 data URL → 压缩后的 JPEG base64（用于嵌入 docx） */
 function compressImageForDocx(dataUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const MAX = 1000;
-      let w = img.width, h = img.height;
-      if (w > MAX || h > MAX) {
-        const r = Math.min(MAX / w, MAX / h);
-        w = Math.round(w * r);
-        h = Math.round(h * r);
-      }
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      let q = 0.85;
-      let result = canvas.toDataURL('image/jpeg', q);
-      while (result.length > 450 * 1024 && q > 0.3) {
-        q -= 0.1;
-        result = canvas.toDataURL('image/jpeg', q);
-      }
-      resolve(result);
-    };
-    img.src = dataUrl;
-  });
+  return compressImage(dataUrl, { maxPx: 1000, maxKB: 450, quality: 0.85 });
 }
 
 // ---------- 核心：克隆文档并插入数据 ----------

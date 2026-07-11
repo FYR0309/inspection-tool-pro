@@ -2,6 +2,7 @@
 // 依赖全局 JSZip 对象（index.html 中引入）
 
 import { DOUBAO_API_URL, DOUBAO_API_KEY, DOUBAO_MODEL } from './config.js';
+import { compressImage } from './utils.js?v=20260711d';
 
 /**
  * 解析 .docx 文件，提取问题条目
@@ -204,31 +205,7 @@ async function parsePhoto(photo) {
 }
 
 function compressImageForOCR(dataUrl, maxKB = 800) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      let w = img.width, h = img.height;
-      const MAX_PX = 1500;
-      if (w > MAX_PX || h > MAX_PX) {
-        const ratio = Math.min(MAX_PX / w, MAX_PX / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
-      }
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      let quality = 0.9;
-      let result = canvas.toDataURL('image/jpeg', quality);
-      while (result.length > maxKB * 1024 && quality > 0.3) {
-        quality -= 0.1;
-        result = canvas.toDataURL('image/jpeg', quality);
-      }
-      resolve(result);
-    };
-    img.src = dataUrl;
-  });
+  return compressImage(dataUrl, { maxPx: 1500, maxKB, quality: 0.9 });
 }
 
 export { parseDocx, parsePhoto };

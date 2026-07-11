@@ -10,6 +10,13 @@ const REPORT_STORE = 'reports';
 const MAX_DRAFTS = 6;
 const MAX_REPORTS = 20;
 
+// 防抖备份：数据变更后 2 秒自动备份到 localStorage
+let _backupTimer = null;
+function scheduleBackup() {
+  if (_backupTimer) clearTimeout(_backupTimer);
+  _backupTimer = setTimeout(() => backupAllToLocalStorage().catch(() => {}), 2000);
+}
+
 // ---------- ID 生成 ----------
 
 function generateId() {
@@ -163,6 +170,7 @@ async function saveDraft(type, data, existingId) {
     }
   }
 
+  scheduleBackup();
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => {
       // 每次保存后自动备份到 localStorage（防浏览器清空 IndexedDB）
@@ -207,6 +215,7 @@ async function deleteDraft(id) {
   const tx = db.transaction(STORE_NAME, 'readwrite');
   const store = tx.objectStore(STORE_NAME);
   store.delete(id);
+  scheduleBackup();
   return new Promise((resolve, reject) => {
     tx.oncomplete = async () => {
       // 刷新备份
@@ -295,6 +304,7 @@ async function saveTemplate(templateData) {
 
   store.put(record);
 
+  scheduleBackup();
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve(record);
     tx.onerror = (e) => reject(e.target.error);
@@ -306,6 +316,7 @@ async function deleteTemplate(id) {
   const tx = db.transaction(TEMPLATE_STORE, 'readwrite');
   const store = tx.objectStore(TEMPLATE_STORE);
   store.delete(id);
+  scheduleBackup();
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject(e.target.error);
@@ -387,6 +398,7 @@ async function deleteChecklist(id) {
   const tx = db.transaction(CHECKLIST_STORE, 'readwrite');
   const store = tx.objectStore(CHECKLIST_STORE);
   store.delete(id);
+  scheduleBackup();
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject(e.target.error);
@@ -448,10 +460,145 @@ async function deleteReport(id) {
   const tx = db.transaction(REPORT_STORE, 'readwrite');
   const store = tx.objectStore(REPORT_STORE);
   store.delete(id);
+  scheduleBackup();
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject(e.target.error);
   });
 }
 
-export { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, addDepartmentPreset, getTodayStr, MAX_DRAFTS, migrateFromV1, saveTemplate, deleteTemplate, getCustomTemplate, listCustomTemplates, exportTemplateAsFile, saveChecklist, listChecklists, deleteChecklist, saveReport, listReports, deleteReport };
+// ---------- 全量数据备份/恢复 ----------
+
+const BACKUP_KEY = 'itp_full_backup';
+
+/** 备份所有数据到 localStorage（每次写操作后自动调用） */
+async function backupAllToLocalStorage() {
+  try {
+    const [drafts, templates, checklists, reports] = await Promise.all([
+      listDrafts().catch(() => []),
+      listCustomTemplates().catch(() => []),
+      listChecklists().catch(() => []),
+      listReports().catch(() => []),
+    ]);
+    // 也带上激活状态
+    const activation = localStorage.getItem('_iap_v') || '';
+    const backup = {
+      version: 1,
+      time: Date.now(),
+      drafts: drafts.map(d => ({ id: d.id, type: d.type, updatedAt: d.updatedAt, itemCount: d.data?.items?.length || 0 })),
+      templates: templates.map(t => ({ id: t.id, name: t.name, industry: t.industry, updatedAt: t.updatedAt })),
+      checklists: checklists.map(c => ({ id: c.id, name: c.name, itemCount: c.items?.length || 0 })),
+      reports: reports.map(r => ({ id: r.id, type: r.type, typeName: r.typeName, itemCount: r.itemCount, createdAt: r.createdAt })),
+      activation,
+    };
+    localStorage.setItem(BACKUP_KEY, JSON.stringify(backup));
+  } catch (e) { /* localStorage 满则跳过 */ }
+}
+
+/** 获取备份信息（用于检测数据是否丢失） */
+function getFullBackupInfo() {
+  try {
+    const raw = localStorage.getItem(BACKUP_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+
+/** 导出全部数据为 JSON 文件（包含完整内容，不只是摘要） */
+async function exportAllDataAsFile() {
+  const [drafts, templates, checklists, reports] = await Promise.all([
+    listDrafts().catch(() => []),
+    listCustomTemplates().catch(() => []),
+    listChecklists().catch(() => []),
+    listReports().catch(() => []),
+  ]);
+  const presets = getPresets();
+  const activation = localStorage.getItem('_iap_v') || '';
+
+  const exportData = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    presets,
+    activation,
+    drafts,
+    templates,
+    checklists,
+    reports,
+  };
+
+  const json = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `检查工具Pro_数据备份_${getTodayStr()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/** 从 JSON 文件导入全部数据 */
+async function importAllDataFromFile(file) {
+  const text = await file.text();
+  let data;
+  try { data = JSON.parse(text); } catch (e) { throw new Error('文件格式不正确，无法解析'); }
+
+  if (!data.version) throw new Error('备份文件格式不兼容（缺少 version 字段）');
+
+  const db = await openDB();
+  let imported = { drafts: 0, templates: 0, checklists: 0, reports: 0 };
+
+  // 恢复预设
+  if (data.presets) savePresets(data.presets);
+
+  // 恢复激活状态
+  if (data.activation) localStorage.setItem('_iap_v', data.activation);
+
+  // 恢复模板（内置模板不覆盖）
+  if (data.templates && data.templates.length > 0) {
+    const tx = db.transaction(TEMPLATE_STORE, 'readwrite');
+    const store = tx.objectStore(TEMPLATE_STORE);
+    for (const t of data.templates) {
+      if (t.id && !t.id.startsWith('tpl_')) continue; // 跳过内置模板
+      store.put(t);
+      imported.templates++;
+    }
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
+  }
+
+  // 恢复检查清单
+  if (data.checklists && data.checklists.length > 0) {
+    const tx = db.transaction(CHECKLIST_STORE, 'readwrite');
+    const store = tx.objectStore(CHECKLIST_STORE);
+    for (const c of data.checklists) { store.put(c); imported.checklists++; }
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
+  }
+
+  // 恢复报告历史
+  if (data.reports && data.reports.length > 0) {
+    const tx = db.transaction(REPORT_STORE, 'readwrite');
+    const store = tx.objectStore(REPORT_STORE);
+    for (const r of data.reports) { store.put(r); imported.reports++; }
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
+  }
+
+  // 恢复草稿
+  if (data.drafts && data.drafts.length > 0) {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    for (const d of data.drafts) { store.put(d); imported.drafts++; }
+    await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = reject; });
+  }
+
+  db.close();
+
+  // 刷新自定义模板缓存
+  try {
+    const { loadCustomTemplates } = await import('../templates/templates.js');
+    await loadCustomTemplates();
+  } catch (e) { /* ignore */ }
+
+  return imported;
+}
+
+export { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, addDepartmentPreset, getTodayStr, MAX_DRAFTS, migrateFromV1, saveTemplate, deleteTemplate, getCustomTemplate, listCustomTemplates, exportTemplateAsFile, saveChecklist, listChecklists, deleteChecklist, saveReport, listReports, deleteReport, backupAllToLocalStorage, getFullBackupInfo, exportAllDataAsFile, importAllDataFromFile };

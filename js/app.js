@@ -1,10 +1,10 @@
 // app.js — 应用主入口：全局状态、页面路由、事件协调
 
-import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260711c';
-import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260711c';
+import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260711d';
+import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260711d';
 import { getTemplate, loadCustomTemplates } from '../templates/templates.js';
-import { callDoubaoOptimize } from './ai.js?v=20260711c';
-import { checkActivation, canGenerateReport, incrementUsage, activateCode, getUsageThisMonth, isFeatureAllowed } from './activate.js?v=20260711c';
+import { callDoubaoOptimize } from './ai.js?v=20260711d';
+import { checkActivation, canGenerateReport, incrementUsage, activateCode, getUsageThisMonth, isFeatureAllowed } from './activate.js?v=20260711d';
 import {
   showToast,
   renderHomePage,
@@ -15,7 +15,7 @@ import {
   showMergePanel,
   renderGeneratePage,
   showUpgradePanel,
-} from './ui.js?v=20260711c';
+} from './ui.js?v=20260711d';
 
 // ---------- 全局状态 ----------
 const state = {
@@ -36,16 +36,29 @@ const state = {
 window._showToast = showToast;
 
 // ---------- 辅助：保存草稿（自动传入 currentDraftId 避免重复）----------
+// 用 Promise 链排队，防止快速连续操作导致重复草稿
+
+let _saveChain = null;
 
 function saveDraftWithId() {
   if (!state.reportType || state.items.length === 0) return Promise.resolve();
-  return saveDraft(state.reportType, {
-    items: state.items,
-    headerInfo: state.headerInfo,
-  }, state.currentDraftId).then(newId => {
-    state.currentDraftId = newId;
-    return newId;
-  }).catch(e => { console.error('保存草稿失败:', e); });
+
+  // 保存任务：执行时才读取 currentDraftId，拿到上一个保存完成后的最新值
+  const doSave = () => {
+    // 浅拷贝防止保存过程中 items 被其他操作修改
+    const data = {
+      items: state.items.slice(),
+      headerInfo: { ...state.headerInfo },
+    };
+    return saveDraft(state.reportType, data, state.currentDraftId).then(newId => {
+      state.currentDraftId = newId;
+      return newId;
+    }).catch(e => { console.error('保存草稿失败:', e); });
+  };
+
+  // 链式排队：上一个保存完成（无论成败）才执行下一个
+  _saveChain = (_saveChain || Promise.resolve()).then(doSave, doSave);
+  return _saveChain;
 }
 
 // ---------- 导入处理 ----------
@@ -55,7 +68,7 @@ async function handleImportDocx(file, reportType) {
 
   let parsed;
   try {
-    const { parseDocx } = await import('./importer.js?v=20260711c');
+    const { parseDocx } = await import('./importer.js?v=20260711d');
     parsed = await parseDocx(file);
   } catch (e) {
     showToast(e.message || '文件解析失败，请确认是工具生成的报告');
@@ -107,7 +120,7 @@ async function handleImportPhoto(file, reportType) {
 
   let result;
   try {
-    const { parsePhoto } = await import('./importer.js?v=20260711c');
+    const { parsePhoto } = await import('./importer.js?v=20260711d');
     result = await parsePhoto(file);
   } catch (e) {
     showToast('照片处理失败，请重试');
@@ -410,7 +423,7 @@ async function showGeneratePage() {
     loadTemplate(tpl);
     const total = state.items.length;
     const done = state.items.filter(i => i.afterPhoto).length;
-    const { buildOverview } = await import('./docx-gen.js?v=20260711c');
+    const { buildOverview } = await import('./docx-gen.js?v=20260711d');
     preOverview = buildOverview(state.headerInfo, total, done, total - done);
   } catch (e) { /* 使用空值 */ }
 
@@ -489,7 +502,7 @@ async function showGeneratePage() {
 
         // 保存报告历史
         try {
-          const { saveReport } = await import('./db.js?v=20260711c');
+          const { saveReport } = await import('./db.js?v=20260711d');
           await saveReport({
             type: state.reportType,
             typeName: template.name,

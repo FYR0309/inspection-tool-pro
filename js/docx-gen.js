@@ -1,6 +1,8 @@
 // docx-gen.js — Word 文档生成引擎（模板驱动）
 // 依赖全局 docx 对象，通过 JSON 模板配置报告格式
 
+import { compressImage } from './utils.js?v=20260711d';
+
 const { Document, Packer, Paragraph, Table, TableRow, TableCell,
         ImageRun, TextRun, AlignmentType, WidthType, BorderStyle,
         ShadingType, convertInchesToTwip, HeightRule } = docx;
@@ -41,31 +43,7 @@ function t() {
 // ---------- 图片压缩 ----------
 
 function compressImageForDocx(dataUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const MAX_DIM = 1000;
-      let w = img.width, h = img.height;
-      if (w > MAX_DIM || h > MAX_DIM) {
-        const ratio = Math.min(MAX_DIM / w, MAX_DIM / h);
-        w = Math.round(w * ratio);
-        h = Math.round(h * ratio);
-      }
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      let quality = 0.85;
-      let result = canvas.toDataURL('image/jpeg', quality);
-      while (result.length > 450 * 1024 && quality > 0.3) {
-        quality -= 0.1;
-        result = canvas.toDataURL('image/jpeg', quality);
-      }
-      resolve(result);
-    };
-    img.src = dataUrl;
-  });
+  return compressImage(dataUrl, { maxPx: 1000, maxKB: 450, quality: 0.85 });
 }
 
 // ---------- 工具 ----------

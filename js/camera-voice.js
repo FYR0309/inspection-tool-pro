@@ -1,4 +1,5 @@
 // camera-voice.js — 拍照 + 语音识别 + 图片压缩
+import { compressImage } from './utils.js?v=20260711d';
 
 // ---------- 拍照 ----------
 
@@ -15,35 +16,12 @@ function takePhoto() {
       const reader = new FileReader();
       reader.onload = () => {
         // 拍照后立即压缩到合理大小（节省 IndexedDB 存储空间）
-        compressForStorage(reader.result).then(resolve).catch(() => resolve(reader.result));
+        compressImage(reader.result, { maxPx: 1200, maxKB: 500, quality: 0.8 }).then(resolve).catch(() => resolve(reader.result));
       };
       reader.onerror = () => reject(new Error('读取照片失败'));
       reader.readAsDataURL(file);
     };
     input.click();
-  });
-}
-
-/** 存储压缩：限制宽度 1200px，质量 0.8，约 300-500KB */
-function compressForStorage(dataUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX_W = 1200;
-      let w = img.width, h = img.height;
-      if (w > MAX_W) {
-        const ratio = MAX_W / w;
-        w = MAX_W;
-        h = Math.round(h * ratio);
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
-    };
-    img.src = dataUrl;
   });
 }
 
@@ -96,4 +74,4 @@ function startVoiceRecognition({ onResult, onInterim, onEnd, onError }) {
   return recognition;
 }
 
-export { takePhoto, compressForStorage, startVoiceRecognition };
+export { takePhoto, startVoiceRecognition };
