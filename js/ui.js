@@ -56,8 +56,8 @@ function getTypeInfo() {
     // 模板加载失败时回退到硬编码默认值
     console.warn('模板列表加载失败，使用默认值:', e);
     _typeInfoCache = {
-      safety: { id: 'safety', name: '安全自查报告', industry: '制造业', description: '车间安全自检自查整改', icon: '🛡️', shortName: '安全', color: '#c0833c' },
-      '5s': { id: '5s', name: '现场管理自查报告', industry: '制造业', description: '5S 现场检查通报', icon: '📋', shortName: '5S', color: '#d4952b' },
+      safety: { id: 'safety', name: '安全检查报告', industry: '制造业', description: '工厂车间安全检查，整改前后对比报告', icon: '🛡️', shortName: '安全', color: '#c0833c' },
+      '5s': { id: '5s', name: '现场检查报告', industry: '制造业', description: '现场管理检查通报，含签名行', icon: '📋', shortName: '5S', color: '#d4952b' },
       company: { id: 'company', name: '公司现场检查整改报告', industry: '制造业', description: '公司检查组检查后整改', icon: '🏭', shortName: '公司', color: '#7b6db5' },
     };
   }

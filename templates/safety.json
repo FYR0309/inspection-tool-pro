@@ -1,12 +1,12 @@
 {
   "version": 1,
   "id": "safety",
-  "name": "安全自查整改报告",
+  "name": "安全检查报告",
   "industry": "制造业",
-  "description": "工厂车间安全自检自查，整改前后对比报告",
+  "description": "工厂车间安全检查，整改前后对比报告",
   "overviewType": "safety",
 
-  "titleTemplate": "安全自检自查整改报告",
+  "titleTemplate": "安全检查报告",
   "overviewTemplate": "根据公司安全管理要求，我车间（部门）分别与{{checkDate1}}、{{checkDate2}}开展安全自检自查工作，其中提出了（{{total}}）个整改项，并已整改完成（{{done}}）项，未能完成整改（{{remain}}）项。",
 
   "page": {
