@@ -17,6 +17,7 @@ import {
   showUpgradePanel,
   initFeedbackButton,
 } from './ui.js?v=20260711j';
+import { trackPage } from './utils.js?v=20260711j';
 
 // ---------- 全局状态 ----------
 const state = {
@@ -180,6 +181,7 @@ async function handleImportPhoto(file, reportType) {
 // ---------- 首页 ----------
 
 function showHome() {
+  trackPage('/home');
   // v1 → v2 迁移（首次运行时执行）
   migrateFromV1().then(() => {
     listDrafts().then(drafts => {
@@ -246,6 +248,7 @@ function handleTypeSelection(type, resume, draftId, file, importReportType) {
 // ---------- 条目列表 ----------
 
 function showItemList() {
+  trackPage('/item-list');
   renderItemList({
     reportType: state.reportType,
     items: state.items,
@@ -296,6 +299,7 @@ function showItemList() {
 // ---------- 新增/编辑条目 ----------
 
 function showItemForm(editIndex, photoOverride, prefill) {
+  trackPage(editIndex !== undefined ? '/item-edit' : '/item-new');
   const item = editIndex !== undefined ? state.items[editIndex]
     : (prefill ? { description: prefill.description || '', beforePhoto: '', afterPhoto: '', status: '待整改' } : null);
 
@@ -320,6 +324,7 @@ function showItemForm(editIndex, photoOverride, prefill) {
 // ---------- AI 润色 ----------
 
 async function showOptimizePage(text, editIndex) {
+  trackPage('/optimize');
   // AI 润色次数检查
   const polishCheck = canPolishText();
   if (!polishCheck.allowed) {
@@ -427,6 +432,7 @@ async function showOptimizePage(text, editIndex) {
 // ---------- 生成报告 ----------
 
 async function showGeneratePage() {
+  trackPage('/generate');
   // 预计算概述文字供编辑
   let preOverview = { titleText: '', overviewText: '' };
   try {

@@ -228,6 +228,20 @@ function showConfirm(opts = {}) {
 }
 
 
+// ========== 百度统计 SPA 追踪 ==========
+
+/**
+ * 上报单页应用的页面切换（百度统计 _trackPageview）
+ * @param {string} path - 页面路径，如 '/home' '/item-list' '/generate'
+ */
+function trackPage(path) {
+  try {
+    if (window._hmt) {
+      window._hmt.push(['_trackPageview', '/inspection-tool-pro' + path]);
+    }
+  } catch (e) { /* 统计失败不影响主流程 */ }
+}
+
 // ========== HTML 转义 ==========
 
 function escapeHtml(str) {
@@ -238,4 +252,4 @@ function escapeHtml(str) {
 }
 
 
-export { compressImage, registerOverlay, closeAllOverlays, showToast, clearToastQueue, showConfirm, escapeHtml };
+export { compressImage, registerOverlay, closeAllOverlays, showToast, clearToastQueue, showConfirm, escapeHtml, trackPage };
