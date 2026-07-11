@@ -15,6 +15,7 @@ import {
   showMergePanel,
   renderGeneratePage,
   showUpgradePanel,
+  initFeedbackButton,
 } from './ui.js?v=20260711g';
 
 // ---------- 全局状态 ----------
@@ -585,6 +586,8 @@ async function init() {
   state.activation = checkActivation();
   // 加载自定义模板（从 IndexedDB）
   await loadCustomTemplates();
+  // 意见反馈浮动按钮
+  initFeedbackButton();
   showHome();
 }
 

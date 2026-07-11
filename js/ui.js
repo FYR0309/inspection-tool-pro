@@ -8,6 +8,32 @@ import { showToast, registerOverlay, closeAllOverlays, showConfirm, escapeHtml }
 
 const pageContainer = document.getElementById('page-container');
 
+// ---------- 开发者联系方式 ----------
+const DEV_WECHAT = 'weinigr';
+
+function generateOrderId() {
+  const now = new Date();
+  const ts = now.getFullYear().toString() +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    String(now.getDate()).padStart(2, '0') +
+    String(now.getHours()).padStart(2, '0') +
+    String(now.getMinutes()).padStart(2, '0');
+  const rand = String(Math.floor(Math.random() * 900 + 100));
+  return `ORDER-${ts}-${rand}`;
+}
+
+function copyAndOpenWechat(text) {
+  const fullText = `${text}\n微信号：${DEV_WECHAT}`;
+  navigator.clipboard.writeText(fullText).then(() => {
+    showToast(`已复制，请到微信添加 ${DEV_WECHAT} 发送`, 3000);
+    setTimeout(() => {
+      try { window.open('weixin://', '_blank'); } catch (e) { /* ignore */ }
+    }, 600);
+  }).catch(() => {
+    showToast(`请添加微信 ${DEV_WECHAT} 发送`, 3000);
+  });
+}
+
 // ---------- 预设信息（从 localStorage 读取，首次为空） ----------
 
 function getPresetCompany() {
@@ -2083,7 +2109,13 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
             <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 0 0;">支付宝</p>
           </div>
         </div>
-        <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 0 0;">扫码支付后，输入激活码即可解锁Pro版</p>
+        <p style="font-size:12px;color:var(--text-secondary);margin:8px 0 0 0;">扫码支付后，点击下方按钮联系开发者获取激活码</p>
+        <div style="margin-top:10px;text-align:center;">
+          <button class="btn btn-primary" id="upgrade-contact-btn" style="width:100%;padding:10px;font-size:15px;">
+            已付款，点此获取激活码
+          </button>
+          <p style="font-size:11px;color:var(--text-secondary);margin:4px 0 0 0;">自动复制订单号，发送给开发者即可</p>
+        </div>
       </div>
 
       <div style="margin-bottom:12px;">
@@ -2181,6 +2213,15 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
       loadingDiv.style.display = 'none';
     }
   };
+
+  // 联系开发者按钮
+  const contactBtn = overlay.querySelector('#upgrade-contact-btn');
+  if (contactBtn) {
+    contactBtn.onclick = () => {
+      const orderId = generateOrderId();
+      copyAndOpenWechat(`已付款，订单号：${orderId}，请发激活码`);
+    };
+  }
 
   // 自动聚焦
   setTimeout(() => codeInput.focus(), 300);
@@ -2389,6 +2430,63 @@ function showSettingsPanel({ onSave }) {
   };
 }
 
+function initFeedbackButton() {
+  // 防止重复创建
+  if (document.getElementById('feedback-float-btn')) return;
+
+  const btn = document.createElement('button');
+  btn.id = 'feedback-float-btn';
+  btn.textContent = '建议';
+  btn.style.cssText = 'position:fixed;right:12px;bottom:120px;z-index:50;'
+    + 'width:44px;height:44px;border-radius:50%;border:1px solid var(--border);'
+    + 'background:var(--primary);color:#fff;font-size:12px;font-weight:600;'
+    + 'box-shadow:0 2px 8px rgba(44,92,197,0.3);cursor:pointer;'
+    + 'display:flex;align-items:center;justify-content:center;'
+    + '-webkit-tap-highlight-color:transparent;';
+  btn.onclick = () => showFeedbackModal();
+  document.body.appendChild(btn);
+}
+
+function showFeedbackModal() {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:61;display:flex;align-items:flex-end;justify-content:center;';
+
+  const usage = getUsageThisMonth();
+  const ua = navigator.userAgent.includes('iPhone') ? 'iPhone' :
+             navigator.userAgent.includes('Android') ? 'Android' : 'Desktop';
+
+  overlay.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:8px 8px 0 0;padding:16px;">
+      <h3 style="margin-bottom:4px;">意见反馈</h3>
+      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">你的建议能帮助改进工具</p>
+      <textarea id="feedback-text" placeholder="写下你的想法..." rows="4"
+        style="width:100%;padding:10px;border:1px solid var(--border);border-radius:2px;font-size:15px;resize:none;box-sizing:border-box;font-family:inherit;"></textarea>
+      <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 10px 0;">
+        提交后将自动复制内容，发送到微信 ${DEV_WECHAT}
+      </p>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-outline btn-block" id="feedback-cancel-btn">取消</button>
+        <button class="btn btn-primary btn-block" id="feedback-submit-btn">提交并发送</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  function close() { document.body.removeChild(overlay); }
+  overlay.querySelector('#feedback-cancel-btn').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  overlay.querySelector('#feedback-submit-btn').onclick = () => {
+    const text = overlay.querySelector('#feedback-text').value.trim();
+    if (!text) { showToast('请填写反馈内容'); return; }
+    const context = `[意见反馈] ${text} (Pro版 v2.7, ${ua}, 本月已用${usage.used}次)`;
+    copyAndOpenWechat(context);
+    close();
+  };
+
+  setTimeout(() => overlay.querySelector('#feedback-text').focus(), 300);
+}
+
 export {
   showToast,
   renderHomePage,
@@ -2403,5 +2501,7 @@ export {
   showImportPanel,
   showTemplateConfirm,
   showManualBuilder,
+  showSettingsPanel,
   clearTypeInfoCache,
+  initFeedbackButton,
 };
