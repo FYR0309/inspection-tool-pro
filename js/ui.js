@@ -695,6 +695,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
           });
           return;
         }
+        }  // close if (!isFeatureAllowed)
 
         showImageEditPanel(slotId, currentPhoto, (editedImage) => {
           if (slotId === 'slot-before') {
