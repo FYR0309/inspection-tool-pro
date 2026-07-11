@@ -23,7 +23,7 @@ let customTemplates = {};
 /** 加载自定义模板（app.js 初始化时调用） */
 async function loadCustomTemplates() {
   try {
-    const { listCustomTemplates } = await import('../js/db.js?v=20260701f');
+    const { listCustomTemplates } = await import('../js/db.js?v=20260711a');
     const records = await listCustomTemplates();
     customTemplates = {};
     records.forEach(r => {

@@ -1,9 +1,10 @@
 // app.js — 应用主入口：全局状态、页面路由、事件协调
 
-import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260701f';
-import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260701f';
+import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260711a';
+import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260711a';
 import { getTemplate, loadCustomTemplates } from '../templates/templates.js';
-import { callDoubaoOptimize } from './ai.js?v=20260701f';
+import { callDoubaoOptimize } from './ai.js?v=20260711a';
+import { checkActivation, canGenerateReport, incrementUsage, activateCode, getUsageThisMonth, isFeatureAllowed } from './activate.js?v=20260711a';
 import {
   showToast,
   renderHomePage,
@@ -13,7 +14,8 @@ import {
   showEditModal,
   showMergePanel,
   renderGeneratePage,
-} from './ui.js?v=20260701f';
+  showUpgradePanel,
+} from './ui.js?v=20260711a';
 
 // ---------- 全局状态 ----------
 const state = {
@@ -28,6 +30,7 @@ const state = {
     halfMonth: null, // 'first' | 'second' — 仅 5S 使用
   },
   currentPage: 'home',
+  activation: { activated: false },  // 激活状态
 };
 
 window._showToast = showToast;
@@ -52,7 +55,7 @@ async function handleImportDocx(file, reportType) {
 
   let parsed;
   try {
-    const { parseDocx } = await import('./importer.js?v=20260701f');
+    const { parseDocx } = await import('./importer.js?v=20260711a');
     parsed = await parseDocx(file);
   } catch (e) {
     showToast(e.message || '文件解析失败，请确认是工具生成的报告');
@@ -104,7 +107,7 @@ async function handleImportPhoto(file, reportType) {
 
   let result;
   try {
-    const { parsePhoto } = await import('./importer.js?v=20260701f');
+    const { parsePhoto } = await import('./importer.js?v=20260711a');
     result = await parsePhoto(file);
   } catch (e) {
     showToast('照片处理失败，请重试');
@@ -407,7 +410,7 @@ async function showGeneratePage() {
     loadTemplate(tpl);
     const total = state.items.length;
     const done = state.items.filter(i => i.afterPhoto).length;
-    const { buildOverview } = await import('./docx-gen.js?v=20260701f');
+    const { buildOverview } = await import('./docx-gen.js?v=20260711a');
     preOverview = buildOverview(state.headerInfo, total, done, total - done);
   } catch (e) { /* 使用空值 */ }
 
@@ -418,6 +421,29 @@ async function showGeneratePage() {
     preTitle: preOverview.titleText,
     preOverview: preOverview.overviewText,
     onConfirm: async (action, editedTitle, editedOverview) => {
+      // 检查是否可以生成报告
+      if (!state.activation.activated) {
+        const canGen = canGenerateReport();
+        if (!canGen.allowed) {
+          showUpgradePanel({
+            reason: 'limit',
+            message: canGen.message,
+            currentUsage: getUsageThisMonth(),
+            onActivate: async (code) => {
+              const result = await activateCode(code);
+              if (result.success) {
+                state.activation = checkActivation();
+                showToast('激活成功！已升级为Pro版');
+                showGeneratePage();  // 刷新生成页
+              } else {
+                return { success: false, error: result.error };
+              }
+              return { success: true };
+            },
+          });
+          return;
+        }
+      }
       showToast('正在生成报告...');
 
       try {
@@ -455,9 +481,15 @@ async function showGeneratePage() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
+        // 递增用量计数
+        if (!state.activation.activated) {
+          incrementUsage();
+          state.activation = checkActivation();  // 刷新激活状态（可能用完额度）
+        }
+
         // 保存报告历史
         try {
-          const { saveReport } = await import('./db.js?v=20260701f');
+          const { saveReport } = await import('./db.js?v=20260711a');
           await saveReport({
             type: state.reportType,
             typeName: template.name,
@@ -537,6 +569,8 @@ window.addEventListener('unhandledrejection', (e) => {
 
 async function init() {
   state.headerInfo.date = getTodayStr();
+  // 加载激活状态
+  state.activation = checkActivation();
   // 加载自定义模板（从 IndexedDB）
   await loadCustomTemplates();
   showHome();

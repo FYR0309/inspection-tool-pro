@@ -1,8 +1,9 @@
 // ui.js — 所有页面视图的渲染函数
 
-import { getPresets, savePresets, getTodayStr } from './db.js?v=20260701f';
-import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260701f';
+import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711a';
+import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711a';
 import { getTemplate, listTemplates, refreshCustomTemplate, removeCustomTemplate, isBuiltinTemplate } from '../templates/templates.js';
+import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, FREE_MONTHLY_LIMIT } from './activate.js?v=20260711a';
 
 const pageContainer = document.getElementById('page-container');
 
@@ -72,7 +73,21 @@ function getIndustryColor(industry) {
   return colors[industry] || '#888';
 }
 
-/** 获取模板中照片列的标签 */
+/** 生成激活状态文本（集成到 presets-bar 中） */
+function getActivationStatusHtml() {
+  const activation = checkActivation();
+  if (activation.activated) {
+    return '<span style="color:#3d7256;font-weight:600;">🔓 Pro版</span>';
+  }
+  const usage = getUsageThisMonth();
+  const remaining = usage.remaining + usage.graceRemaining;
+  return `<span style="color:#c0833c;font-weight:600;">⚡ 免费版</span> · 剩余${remaining}次`;
+}
+
+function getActivationAction() {
+  const activation = checkActivation();
+  return activation.activated ? 'show-settings' : 'show-upgrade';
+}
 function getPhotoLabels(reportType) {
   try {
     const t = getTemplate(reportType);
@@ -197,7 +212,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   // 加载报告历史
   let reports = [];
   try {
-    const { listReports } = await import('./db.js?v=20260701f');
+    const { listReports } = await import('./db.js?v=20260711a');
     reports = await listReports();
   } catch (e) { /* ignore */ }
 
@@ -235,7 +250,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
 
 	      <p style="color:#bbb;font-size:11px;margin-bottom:6px;text-align:center;">💡 支持拍照、语音输入、AI润色</p>
       <div class="presets-bar" id="presets-bar" style="cursor:pointer;${!getPresetCompany() ? 'background:#fff3e0;border:2px solid #ff9800;border-radius:10px;padding:8px 12px;' : ''}" title="点击编辑公司/部门信息（报告落款使用）">
-        🏢 ${escapeHtml(getPresetCompany() || '⚠️ 点击设置公司名称（报告必填）')} · 👤 ${escapeHtml(getPresetDepartment() || '点击设置部门')} · 📅 ${today}
+        🏢 ${escapeHtml(getPresetCompany() || '⚠️ 点击设置公司名称（报告必填）')} · 👤 ${escapeHtml(getPresetDepartment() || '点击设置部门')} · 📅 ${today} · ${getActivationStatusHtml()}
         <span style="font-size:11px;margin-left:4px;">✏️</span>
       </div>
 
@@ -314,7 +329,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
         label: '撤回',
         onUndo: () => {
           // 恢复：重新读取（草稿还在 IndexedDB 中）
-          import('./db.js?v=20260701f').then(({ listDrafts }) => {
+          import('./db.js?v=20260711a').then(({ listDrafts }) => {
             listDrafts().then(newDrafts => {
               renderHomePage({ drafts: newDrafts, onSelectType });
             });
@@ -322,7 +337,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
         },
         onTimeout: () => {
           // 超时后真正删除
-          import('./db.js?v=20260701f').then(({ deleteDraft }) => {
+          import('./db.js?v=20260711a').then(({ deleteDraft }) => {
             deleteDraft(draftId).catch(() => {});
           });
         },
@@ -370,7 +385,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       const tplId = card.dataset.id;
       showTemplateEditor({ templateId: tplId, onBack: () => {
-        import('./db.js?v=20260701f').then(({ listDrafts }) => {
+        import('./db.js?v=20260711a').then(({ listDrafts }) => {
           listDrafts().then(newDrafts => renderHomePage({ drafts: newDrafts, onSelectType }));
         });
       }});
@@ -381,7 +396,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (action === 'export-template') {
       e.stopPropagation();
       const tplId = card.dataset.id;
-      import('./db.js?v=20260701f').then(({ getCustomTemplate, exportTemplateAsFile }) => {
+      import('./db.js?v=20260711a').then(({ getCustomTemplate, exportTemplateAsFile }) => {
         getCustomTemplate(tplId).then(record => {
           if (record) exportTemplateAsFile(record);
         });
@@ -393,7 +408,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (action === 'delete-template') {
       e.stopPropagation();
       const tplId = card.dataset.id;
-      import('./db.js?v=20260701f').then(({ deleteTemplate }) => {
+      import('./db.js?v=20260711a').then(({ deleteTemplate }) => {
         deleteTemplate(tplId).then(() => {
           // 同步删除原始 .docx 存储
           import('./docx-template-cloner.js').then(({ deleteOriginalTemplate }) => {
@@ -401,7 +416,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
           }).catch(() => {});
           removeCustomTemplate(tplId);
           clearTypeInfoCache();
-          import('./db.js?v=20260701f').then(({ listDrafts }) => {
+          import('./db.js?v=20260711a').then(({ listDrafts }) => {
             listDrafts().then(newDrafts => {
               renderHomePage({ drafts: newDrafts, onSelectType });
             });
@@ -418,7 +433,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (delReportBtn) {
       e.stopPropagation();
       const rptId = delReportBtn.dataset.id;
-      import('./db.js?v=20260701f').then(async ({ deleteReport, listDrafts }) => {
+      import('./db.js?v=20260711a').then(async ({ deleteReport, listDrafts }) => {
         await deleteReport(rptId);
         const d = await listDrafts();
         renderHomePage({ drafts: d, onSelectType });
@@ -431,12 +446,12 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       showToast('正在重新生成报告...');
       try {
-        const { listReports } = await import('./db.js?v=20260701f');
+        const { listReports } = await import('./db.js?v=20260711a');
         const all = await listReports();
         const rpt = all.find(r => r.id === regenBtn.dataset.id);
         if (!rpt) { showToast('报告数据已丢失'); return; }
 
-        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260701f');
+        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711a');
         const { getTemplate } = await import('../templates/templates.js');
         const tpl = getTemplate(rpt.type);
         loadTemplate(tpl);
@@ -458,14 +473,36 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     }
   });
 
-  // 设置栏点击 → 弹出设置面板
+  // 设置栏点击 → 弹出设置面板或升级面板
   const presetsBar = document.getElementById('presets-bar');
   if (presetsBar) {
-    presetsBar.onclick = () => showSettingsPanel({ onSave: () => {
-      import('./db.js?v=20260701f').then(({ listDrafts }) => {
-        listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
-      });
-    }});
+    presetsBar.onclick = () => {
+      const action = getActivationAction();
+      if (action === 'show-upgrade') {
+        showUpgradePanel({
+          reason: 'upgrade',
+          message: '升级Pro版解锁无限报告 + AI修图功能',
+          currentUsage: getUsageThisMonth(),
+          onActivate: async (code) => {
+            const result = await activateCode(code);
+            return result;
+          },
+          onSettings: () => {
+            showSettingsPanel({ onSave: () => {
+              import('./db.js?v=20260711a').then(({ listDrafts }) => {
+                listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
+              });
+            }});
+          },
+        });
+      } else {
+        showSettingsPanel({ onSave: () => {
+          import('./db.js?v=20260711a').then(({ listDrafts }) => {
+            listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
+          });
+        }});
+      }
+    };
   }
 
   // 导入模板按钮（延迟绑定，因为按钮在 innerHTML 中）
@@ -473,7 +510,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     const importBtn = document.getElementById('import-template-btn');
     if (importBtn) {
       importBtn.onclick = () => showImportPanel({ onSelectType, onBack: (jumpToTemplateId) => {
-        import('./db.js?v=20260701f').then(({ listDrafts }) => {
+        import('./db.js?v=20260711a').then(({ listDrafts }) => {
           listDrafts().then(d => {
             renderHomePage({ drafts: d, onSelectType });
             if (jumpToTemplateId) {
@@ -675,13 +712,38 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
       });
     }
 
-    // ✨ 修图按钮 → AI 修图面板
+    // ✨ 修图按钮 → AI 修图面板（Pro版功能）
     const editBtn = slot.querySelector('.slot-edit-btn');
     if (editBtn) {
       editBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const currentPhoto = slotId === 'slot-before' ? beforePhoto : afterPhoto;
         if (!currentPhoto) return;
+
+        // 免费版检查
+        if (!isFeatureAllowed('image-edit')) {
+          showUpgradePanel({
+            reason: 'image-edit',
+            message: 'AI修图是Pro版功能，升级后即可使用',
+            currentUsage: getUsageThisMonth(),
+            onActivate: async (code) => {
+              const result = await activateCode(code);
+              if (result.success) {
+                renderItemForm({
+                  item: {
+                    description: document.getElementById('item-desc')?.value || desc,
+                    beforePhoto: window._formBeforePhoto !== undefined ? window._formBeforePhoto : beforePhoto,
+                    afterPhoto: window._formAfterPhoto !== undefined ? window._formAfterPhoto : afterPhoto,
+                  },
+                  index, reportType, onSave, onCancel, onOptimize,
+                });
+              }
+              return result;
+            },
+          });
+          return;
+        }
+
         showImageEditPanel(slotId, currentPhoto, (editedImage) => {
           if (slotId === 'slot-before') {
             window._formBeforePhoto = editedImage;
@@ -718,7 +780,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
     const voiceText = document.getElementById('voice-text');
     statusDiv.style.display = 'block';
     voiceText.textContent = '正在聆听...';
-    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260701f');
+    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711a');
     window._voiceRecognition = startVoiceRecognition({
       onResult: (text) => {
         voiceText.textContent = text;
@@ -1007,7 +1069,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
     editVoiceStatus.style.display = 'block';
     editVoiceText.textContent = '正在聆听...';
     try {
-      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260701f');
+      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711a');
       startVoiceRecognition({
         onResult: (text) => {
           promptInput.value = text;
@@ -1416,7 +1478,7 @@ function showImportPanel({ onSelectType, onBack }) {
         const tpl = JSON.parse(text);
         if (!tpl.id || !tpl.columns) throw new Error('JSON 格式不正确：缺少 id 或 columns');
 
-        const { saveTemplate } = await import('./db.js?v=20260701f');
+        const { saveTemplate } = await import('./db.js?v=20260711a');
         const record = await saveTemplate({ ...tpl, source: 'imported', isBuiltin: false });
         refreshCustomTemplate(record.id, tpl);
         clearTypeInfoCache();
@@ -1444,7 +1506,7 @@ function showImportPanel({ onSelectType, onBack }) {
           setTimeout(() => {
             document.body.removeChild(overlay);
             showManualBuilder({ onSave: async (tpl) => {
-              const { saveTemplate } = await import('./db.js?v=20260701f');
+              const { saveTemplate } = await import('./db.js?v=20260711a');
               const record = await saveTemplate({ ...tpl, source: 'manual', isBuiltin: false });
               refreshCustomTemplate(record.id, tpl);
               clearTypeInfoCache();
@@ -1573,7 +1635,7 @@ function showTemplateConfirm(parseResult, { onBack }) {
       else if (sel.value === 'remark') template.columns[i].field = '_remark';
     });
 
-    const { saveTemplate } = await import('./db.js?v=20260701f');
+    const { saveTemplate } = await import('./db.js?v=20260711a');
     const record = await saveTemplate({ ...template, source: 'docx-imported', isBuiltin: false });
     refreshCustomTemplate(record.id, template);
     clearTypeInfoCache();
@@ -1776,7 +1838,7 @@ function showTemplateEditor({ templateId, onBack }) {
     newTpl.source = 'customized';
     newTpl.version = 1;
 
-    const { saveTemplate } = await import('./db.js?v=20260701f');
+    const { saveTemplate } = await import('./db.js?v=20260711a');
     const record = await saveTemplate({ ...newTpl });
     refreshCustomTemplate(record.id, newTpl);
     clearTypeInfoCache();
@@ -1859,7 +1921,7 @@ function replacePreview(template, vars) {
 // ---------- 检查清单面板 ----------
 
 async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
-  const checklists = await (await import('./db.js?v=20260701f')).listChecklists().catch(() => []);
+  const checklists = await (await import('./db.js?v=20260711a')).listChecklists().catch(() => []);
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
@@ -1908,7 +1970,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
       if (!name) { showToast('请输入清单名称'); return; }
       const descItems = items.filter(i => i.description).map(i => ({ description: i.description }));
       if (descItems.length === 0) { showToast('没有可保存的描述项'); return; }
-      await (await import('./db.js?v=20260701f')).saveChecklist(name, descItems);
+      await (await import('./db.js?v=20260711a')).saveChecklist(name, descItems);
       document.body.removeChild(overlay);
       showToast(`清单"${name}"已保存`);
     };
@@ -1929,11 +1991,145 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
   overlay.querySelectorAll('[data-action="del-checklist"]').forEach(el => {
     el.onclick = async (e) => {
       e.stopPropagation();
-      await (await import('./db.js?v=20260701f')).deleteChecklist(el.dataset.id);
+      await (await import('./db.js?v=20260711a')).deleteChecklist(el.dataset.id);
       document.body.removeChild(overlay);
       showToast('清单已删除');
     };
   });
+}
+
+// ---------- 升级面板 ----------
+
+/**
+ * 升级/激活面板
+ * @param {Object} opts
+ * @param {string} opts.reason - 'limit'|'image-edit'|'upgrade'
+ * @param {string} opts.message - 提示信息
+ * @param {Object} opts.currentUsage - getUsageThisMonth() 返回值
+ * @param {Function} opts.onActivate - 激活回调: (code) => Promise<{success, error?}>
+ * @param {Function} [opts.onSettings] - 跳转设置（仅 upgrade 场景）
+ */
+function showUpgradePanel({ reason, message, currentUsage, onActivate, onSettings }) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
+
+  const usageText = currentUsage
+    ? `本月已用 ${currentUsage.used}/${FREE_MONTHLY_LIMIT} 次`
+    : '';
+
+  overlay.innerHTML = `
+    <div style="background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:20px;max-height:80vh;overflow-y:auto;">
+      <div style="text-align:center;margin-bottom:16px;">
+        <div style="font-size:48px;margin-bottom:8px;">${reason === 'limit' ? '📊' : '🔒'}</div>
+        <h3 style="margin-bottom:4px;">${reason === 'image-edit' ? 'AI修图需要Pro版' : '升级到Pro版'}</h3>
+        <p style="font-size:14px;color:#666;">${message}</p>
+        ${usageText ? `<p style="font-size:13px;color:#c0833c;margin-top:4px;">${usageText}</p>` : ''}
+      </div>
+
+      <div style="background:#fafaf7;border-radius:10px;padding:14px;margin-bottom:16px;">
+        <h4 style="font-size:14px;margin-bottom:8px;">✨ Pro版权益</h4>
+        <div style="font-size:13px;line-height:2;color:#666;">
+          <div>✅ 无限生成报告（免费版每月${FREE_MONTHLY_LIMIT}次）</div>
+          <div>✅ AI智能修图（美化现场照片）</div>
+          <div>✅ 所有模板功能全开放</div>
+          <div>✅ 优先技术支持</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="font-size:13px;color:#666;margin-bottom:6px;display:block;">🔑 请输入激活码</label>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="upgrade-code-input" placeholder="RTHX-XXXX-XXXX"
+            style="flex:1;padding:10px;border:1px solid #e0dbd2;border-radius:8px;font-size:16px;font-family:monospace;text-align:center;text-transform:uppercase;letter-spacing:1px;"
+            maxlength="14" autocomplete="off">
+          <button class="btn btn-primary" id="upgrade-activate-btn" style="flex-shrink:0;padding:10px 16px;font-size:15px;">激活</button>
+        </div>
+        <div id="upgrade-error" style="display:none;color:#c4553d;font-size:12px;margin-top:4px;"></div>
+        <div id="upgrade-loading" style="display:none;text-align:center;padding:8px;margin-top:4px;">
+          <span class="spinner" style="width:16px;height:16px;margin-right:6px;vertical-align:middle;"></span>
+          <span style="font-size:12px;color:#999;">正在验证...</span>
+        </div>
+      </div>
+
+      <p style="font-size:11px;color:#bbb;text-align:center;margin-bottom:14px;">
+        获取激活码请联系开发者 💬
+      </p>
+
+      <div style="display:flex;gap:10px;">
+        <button class="btn btn-outline btn-block" id="upgrade-cancel-btn">取消</button>
+        ${onSettings ? '<button class="btn btn-block" id="upgrade-settings-btn" style="border:1px solid #ccc;background:#fff;color:#666;font-size:14px;">⚙️ 设置</button>' : ''}
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+
+  const codeInput = overlay.querySelector('#upgrade-code-input');
+  const activateBtn = overlay.querySelector('#upgrade-activate-btn');
+  const errorDiv = overlay.querySelector('#upgrade-error');
+  const loadingDiv = overlay.querySelector('#upgrade-loading');
+
+  // 取消
+  function close() { document.body.removeChild(overlay); }
+  overlay.querySelector('#upgrade-cancel-btn').onclick = close;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+  // 设置按钮
+  if (onSettings) {
+    overlay.querySelector('#upgrade-settings-btn').onclick = () => {
+      document.body.removeChild(overlay);
+      onSettings();
+    };
+  }
+
+  // 输入时清除错误
+  codeInput.addEventListener('input', () => {
+    errorDiv.style.display = 'none';
+    // 自动格式化：4位后插入横线
+    let val = codeInput.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    if (val.length > 4) val = val.substring(0, 4) + '-' + val.substring(4);
+    if (val.length > 9) val = val.substring(0, 9) + '-' + val.substring(9, 13);
+    codeInput.value = val.substring(0, 14);
+  });
+
+  // 回车激活
+  codeInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') activateBtn.click();
+  });
+
+  // 激活按钮
+  activateBtn.onclick = async () => {
+    const code = codeInput.value.trim();
+    if (!code || code.length < 12) {
+      errorDiv.textContent = '请输入完整的激活码';
+      errorDiv.style.display = 'block';
+      return;
+    }
+
+    // 显示加载
+    activateBtn.disabled = true;
+    errorDiv.style.display = 'none';
+    loadingDiv.style.display = 'block';
+
+    try {
+      const result = await onActivate(code);
+      if (result.success) {
+        document.body.removeChild(overlay);
+        showToast('✅ 激活成功！已升级为Pro版');
+      } else {
+        errorDiv.textContent = result.error || '激活失败，请检查激活码';
+        errorDiv.style.display = 'block';
+      }
+    } catch (e) {
+      errorDiv.textContent = '网络异常，请重试';
+      errorDiv.style.display = 'block';
+    } finally {
+      activateBtn.disabled = false;
+      loadingDiv.style.display = 'none';
+    }
+  };
+
+  // 自动聚焦
+  setTimeout(() => codeInput.focus(), 300);
 }
 
 // ---------- 设置面板 ----------
@@ -2024,6 +2220,7 @@ export {
   showImageEditPanel,
   showMergePanel,
   renderGeneratePage,
+  showUpgradePanel,
   showImportPanel,
   showTemplateConfirm,
   showManualBuilder,

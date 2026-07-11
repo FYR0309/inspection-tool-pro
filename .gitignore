@@ -4,3 +4,5 @@ Thumbs.db
 *.swp
 *.swo
 test-results/
+# 激活码生成器（含密钥，不要上传到公开仓库）
+activate-generator.html
