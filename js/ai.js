@@ -1,7 +1,7 @@
 // ai.js — 直接调用 AI API（无需后端代理）
 
-import { DOUBAO_API_URL, DOUBAO_API_KEY, DOUBAO_MODEL, IMAGE_EDIT_MODEL, IMAGE_API_KEY } from './config.js?v=20260711g';
-import { compressImage } from './utils.js?v=20260711g';
+import { DOUBAO_API_URL, DOUBAO_API_KEY, DOUBAO_MODEL, IMAGE_EDIT_MODEL, IMAGE_API_KEY } from './config.js?v=20260711h';
+import { compressImage } from './utils.js?v=20260711h';
 
 // 火山方舟图片编辑 API (images/generations)
 // 使用 Seedream 4.5 图生图，单独 API Key 授权

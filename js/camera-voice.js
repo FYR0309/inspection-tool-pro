@@ -1,5 +1,5 @@
 // camera-voice.js — 拍照 + 语音识别 + 图片压缩
-import { compressImage } from './utils.js?v=20260711g';
+import { compressImage } from './utils.js?v=20260711h';
 
 // ---------- 拍照 ----------
 
