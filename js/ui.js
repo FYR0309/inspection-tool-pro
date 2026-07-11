@@ -1,10 +1,10 @@
 // ui.js — 所有页面视图的渲染函数
 
-import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711i';
-import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711i';
+import { getPresets, savePresets, getTodayStr } from './db.js?v=20260711j';
+import { callImageEdit, callOptimizePrompt } from './ai.js?v=20260711j';
 import { getTemplate, listTemplates, refreshCustomTemplate, removeCustomTemplate, isBuiltinTemplate } from '../templates/templates.js';
-import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, getImageEditUsageThisMonth, incrementImageEditUsage, getPolishUsageThisMonth, incrementPolishUsage, canPolishText, TESTING_MODE, FREE_MONTHLY_LIMIT, IMAGE_EDIT_MONTHLY_LIMIT, IMAGE_EDIT_TESTING_LIMIT, POLISH_MONTHLY_LIMIT } from './activate.js?v=20260711i';
-import { showToast, registerOverlay, closeAllOverlays, showConfirm, escapeHtml } from './utils.js?v=20260711i';
+import { checkActivation, getUsageThisMonth, activateCode, isFeatureAllowed, getImageEditUsageThisMonth, incrementImageEditUsage, getPolishUsageThisMonth, incrementPolishUsage, canPolishText, TESTING_MODE, FREE_MONTHLY_LIMIT, IMAGE_EDIT_MONTHLY_LIMIT, IMAGE_EDIT_TESTING_LIMIT, POLISH_MONTHLY_LIMIT } from './activate.js?v=20260711j';
+import { showToast, registerOverlay, closeAllOverlays, showConfirm, escapeHtml } from './utils.js?v=20260711j';
 
 const pageContainer = document.getElementById('page-container');
 
@@ -217,7 +217,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   // 加载报告历史
   let reports = [];
   try {
-    const { listReports } = await import('./db.js?v=20260711i');
+    const { listReports } = await import('./db.js?v=20260711j');
     reports = await listReports();
   } catch (e) { /* ignore */ }
 
@@ -250,8 +250,8 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
 
   pageContainer.innerHTML = `
     <div class="page active" id="home-page">
-      <h2 style="font-size:18px;margin-bottom:4px;">安全检查报告</h2>
-      <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">选择一个模板开始，或导入您的 Word 模板</p>
+      <h2 style="font-size:18px;margin-bottom:4px;">检查报告助手</h2>
+      <p style="color:var(--text-secondary);font-size:12px;margin-bottom:12px;">拍照记录问题 → AI润色 → 一键生成Word报告</p>
 
       <div class="presets-bar" id="presets-bar" style="cursor:pointer;${!getPresetCompany() ? 'background:#fef0f0;border:2px solid #f53f3f;' : ''}" title="点击编辑公司/部门信息（报告落款使用）">
         ${!getPresetCompany()
@@ -263,7 +263,6 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
         <div style="font-size:11px;color:var(--text-secondary);margin:10px 0 6px;">内置模板</div>
         ${builtinCards.map(c => `
           <div class="card card-type-${c.id}" style="display:flex;align-items:center;gap:8px;">
-            <span style="background:${c.color};color:#fff;font-size:12px;padding:2px 6px;border-radius:2px;flex-shrink:0;min-width:32px;text-align:center;">${c.icon}</span>
             <div style="flex:1;min-width:0;" data-action="select-type" data-type="${c.id}">
               <div class="card-title">${c.name}</div>
               <div class="card-desc">${c.description}</div>
@@ -337,14 +336,14 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
           showToast('草稿已删除', 5000, {
             label: '撤回',
             onUndo: () => {
-              import('./db.js?v=20260711i').then(({ listDrafts }) => {
+              import('./db.js?v=20260711j').then(({ listDrafts }) => {
                 listDrafts().then(newDrafts => {
                   renderHomePage({ drafts: newDrafts, onSelectType });
                 });
               });
             },
             onTimeout: () => {
-              import('./db.js?v=20260711i').then(({ deleteDraft }) => {
+              import('./db.js?v=20260711j').then(({ deleteDraft }) => {
                 deleteDraft(draftId).catch(() => {});
               });
             },
@@ -394,7 +393,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       const tplId = card.dataset.id;
       showTemplateEditor({ templateId: tplId, onBack: () => {
-        import('./db.js?v=20260711i').then(({ listDrafts }) => {
+        import('./db.js?v=20260711j').then(({ listDrafts }) => {
           listDrafts().then(newDrafts => renderHomePage({ drafts: newDrafts, onSelectType }));
         });
       }});
@@ -405,7 +404,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (action === 'delete-template') {
       e.stopPropagation();
       const tplId = card.dataset.id;
-      import('./db.js?v=20260711i').then(({ deleteTemplate }) => {
+      import('./db.js?v=20260711j').then(({ deleteTemplate }) => {
         deleteTemplate(tplId).then(() => {
           // 同步删除原始 .docx 存储
           import('./docx-template-cloner.js').then(({ deleteOriginalTemplate }) => {
@@ -413,7 +412,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
           }).catch(() => {});
           removeCustomTemplate(tplId);
           clearTypeInfoCache();
-          import('./db.js?v=20260711i').then(({ listDrafts }) => {
+          import('./db.js?v=20260711j').then(({ listDrafts }) => {
             listDrafts().then(newDrafts => {
               renderHomePage({ drafts: newDrafts, onSelectType });
             });
@@ -430,7 +429,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     if (delReportBtn) {
       e.stopPropagation();
       const rptId = delReportBtn.dataset.id;
-      import('./db.js?v=20260711i').then(async ({ deleteReport, listDrafts }) => {
+      import('./db.js?v=20260711j').then(async ({ deleteReport, listDrafts }) => {
         await deleteReport(rptId);
         const d = await listDrafts();
         renderHomePage({ drafts: d, onSelectType });
@@ -443,12 +442,12 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       e.stopPropagation();
       showToast('正在重新生成报告...');
       try {
-        const { listReports } = await import('./db.js?v=20260711i');
+        const { listReports } = await import('./db.js?v=20260711j');
         const all = await listReports();
         const rpt = all.find(r => r.id === regenBtn.dataset.id);
         if (!rpt) { showToast('报告数据已丢失'); return; }
 
-        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711i');
+        const { generateDocx, loadTemplate } = await import('./docx-gen.js?v=20260711j');
         const { getTemplate } = await import('../templates/templates.js');
         const tpl = getTemplate(rpt.type);
         loadTemplate(tpl);
@@ -475,7 +474,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
   if (presetsBar) {
     presetsBar.onclick = () => {
       showSettingsPanel({ onSave: () => {
-        import('./db.js?v=20260711i').then(({ listDrafts }) => {
+        import('./db.js?v=20260711j').then(({ listDrafts }) => {
           listDrafts().then(d => renderHomePage({ drafts: d, onSelectType }));
         });
       }});
@@ -500,7 +499,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
     const importBtn = document.getElementById('import-template-btn');
     if (importBtn) {
       importBtn.onclick = () => showImportPanel({ onSelectType, onBack: (jumpToTemplateId) => {
-        import('./db.js?v=20260711i').then(({ listDrafts }) => {
+        import('./db.js?v=20260711j').then(({ listDrafts }) => {
           listDrafts().then(d => {
             renderHomePage({ drafts: d, onSelectType });
             if (jumpToTemplateId) {
@@ -816,7 +815,7 @@ function renderItemForm({ item, index, reportType, onSave, onCancel, onOptimize,
     const voiceText = document.getElementById('voice-text');
     statusDiv.style.display = 'block';
     voiceText.textContent = '正在聆听...';
-    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711i');
+    const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711j');
     window._voiceRecognition = startVoiceRecognition({
       onResult: (text) => {
         voiceText.textContent = text;
@@ -1106,7 +1105,7 @@ function showImageEditPanel(slotId, imageDataUrl, onConfirm, reportType) {
     editVoiceStatus.style.display = 'block';
     editVoiceText.textContent = '正在聆听...';
     try {
-      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711i');
+      const { startVoiceRecognition } = await import('./camera-voice.js?v=20260711j');
       startVoiceRecognition({
         onResult: (text) => {
           promptInput.value = text;
@@ -1530,7 +1529,7 @@ function showImportPanel({ onSelectType, onBack }) {
         const tpl = JSON.parse(text);
         if (!tpl.id || !tpl.columns) throw new Error('JSON 格式不正确：缺少 id 或 columns');
 
-        const { saveTemplate } = await import('./db.js?v=20260711i');
+        const { saveTemplate } = await import('./db.js?v=20260711j');
         const record = await saveTemplate({ ...tpl, source: 'imported', isBuiltin: false });
         refreshCustomTemplate(record.id, tpl);
         clearTypeInfoCache();
@@ -1558,7 +1557,7 @@ function showImportPanel({ onSelectType, onBack }) {
           setTimeout(() => {
             document.body.removeChild(overlay);
             showManualBuilder({ onSave: async (tpl) => {
-              const { saveTemplate } = await import('./db.js?v=20260711i');
+              const { saveTemplate } = await import('./db.js?v=20260711j');
               const record = await saveTemplate({ ...tpl, source: 'manual', isBuiltin: false });
               refreshCustomTemplate(record.id, tpl);
               clearTypeInfoCache();
@@ -1673,7 +1672,7 @@ function showTemplateConfirm(parseResult, { onBack }) {
       else if (sel.value === 'remark') template.columns[i].field = '_remark';
     });
 
-    const { saveTemplate } = await import('./db.js?v=20260711i');
+    const { saveTemplate } = await import('./db.js?v=20260711j');
     const record = await saveTemplate({ ...template, source: 'docx-imported', isBuiltin: false });
     refreshCustomTemplate(record.id, template);
     clearTypeInfoCache();
@@ -1875,7 +1874,7 @@ function showTemplateEditor({ templateId, onBack }) {
 
   // 导出模板
   overlay.querySelector('#tpl-edit-export').onclick = async () => {
-    const { getCustomTemplate, exportTemplateAsFile } = await import('./db.js?v=20260711i');
+    const { getCustomTemplate, exportTemplateAsFile } = await import('./db.js?v=20260711j');
     if (isBuiltin) {
       // 内置模板直接导出当前编辑的 JSON
       exportTemplateAsFile({ id: tpl.id, data: tpl });
@@ -1897,7 +1896,7 @@ function showTemplateEditor({ templateId, onBack }) {
     newTpl.source = 'customized';
     newTpl.version = 1;
 
-    const { saveTemplate } = await import('./db.js?v=20260711i');
+    const { saveTemplate } = await import('./db.js?v=20260711j');
     const record = await saveTemplate({ ...newTpl });
     refreshCustomTemplate(record.id, newTpl);
     clearTypeInfoCache();
@@ -1993,7 +1992,7 @@ function replacePreview(template, vars) {
 // ---------- 检查清单面板 ----------
 
 async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
-  const checklists = await (await import('./db.js?v=20260711i')).listChecklists().catch(() => []);
+  const checklists = await (await import('./db.js?v=20260711j')).listChecklists().catch(() => []);
 
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:60;display:flex;align-items:flex-end;justify-content:center;';
@@ -2042,7 +2041,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
       if (!name) { showToast('请输入清单名称'); return; }
       const descItems = items.filter(i => i.description).map(i => ({ description: i.description }));
       if (descItems.length === 0) { showToast('没有可保存的描述项'); return; }
-      await (await import('./db.js?v=20260711i')).saveChecklist(name, descItems);
+      await (await import('./db.js?v=20260711j')).saveChecklist(name, descItems);
       document.body.removeChild(overlay);
       showToast(`清单"${name}"已保存`);
     };
@@ -2063,7 +2062,7 @@ async function showChecklistPanel({ items, reportType, onSave, onLoad }) {
   overlay.querySelectorAll('[data-action="del-checklist"]').forEach(el => {
     el.onclick = async (e) => {
       e.stopPropagation();
-      await (await import('./db.js?v=20260711i')).deleteChecklist(el.dataset.id);
+      await (await import('./db.js?v=20260711j')).deleteChecklist(el.dataset.id);
       document.body.removeChild(overlay);
       showToast('清单已删除');
     };
@@ -2256,7 +2255,6 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
 
 function showSettingsPanel({ onSave }) {
   const presets = getPresets();
-  const depts = presets.departments || [];
   const activation = checkActivation();
   const usage = getUsageThisMonth();
 
@@ -2264,36 +2262,44 @@ function showSettingsPanel({ onSave }) {
   let activationHtml = '';
   if (activation.dev) {
     activationHtml = `
-      <div style="background:#f0ebe0;border-radius:10px;padding:12px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div style="font-weight:600;font-size:14px;">开发者模式</div>
-          <div style="font-size:12px;color:#999;">无限使用 · 全功能开放</div>
+      <div style="background:#f0ebe0;border-radius:2px;padding:10px;margin-bottom:12px;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px;">🔧 开发者模式</div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
+          <div>📄 报告：不限次</div>
+          <div>✨ AI润色：不限次</div>
+          <div>🎨 AI修图：不限次</div>
         </div>
       </div>`;
   } else if (activation.activated) {
     const imgUsage = getImageEditUsageThisMonth();
     activationHtml = `
-      <div style="background:#f0f4ff;border-radius:2px;padding:10px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div style="font-weight:600;font-size:14px;">Pro 版</div>
-          <div style="font-size:12px;color:var(--text-secondary);">无限报告 · AI修图${imgUsage.remaining}/${IMAGE_EDIT_MONTHLY_LIMIT}次</div>
+      <div style="background:#f0f4ff;border:1px solid var(--primary);border-radius:2px;padding:10px;margin-bottom:12px;">
+        <div style="font-weight:600;font-size:14px;margin-bottom:4px;">⭐ Pro 版</div>
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
+          <div>📄 报告：不限次</div>
+          <div>✨ AI润色：不限次</div>
+          <div>🎨 AI修图：${imgUsage.used}/${IMAGE_EDIT_MONTHLY_LIMIT} 次（本月）</div>
         </div>
       </div>`;
   } else {
+    const imgUsage = getImageEditUsageThisMonth();
     const mainRemaining = usage.remaining;
     const graceRemaining = usage.graceRemaining;
-    let usageText = '';
-    if (mainRemaining > 0) usageText += `本月${FREE_MONTHLY_LIMIT}次（剩余${mainRemaining}）`;
-    if (graceRemaining > 0) usageText += `${usageText ? ' + ' : ''}赠送${graceRemaining}次可用`;
-    if (!usageText) usageText = `本月${FREE_MONTHLY_LIMIT}次已用完`;
-    const upgradeBtn = TESTING_MODE ? '' : '<button class="btn btn-sm" id="settings-upgrade-btn" style="background:#e07b20;color:#fff;border:none;padding:8px 14px;border-radius:2px;font-size:13px;font-weight:600;white-space:nowrap;">升级</button>';
+    let reportText = `报告 ${usage.used}/${FREE_MONTHLY_LIMIT} 次`;
+    if (graceRemaining > 0) reportText += `（赠送${graceRemaining}次可用）`;
+    if (usage.used >= FREE_MONTHLY_LIMIT && graceRemaining <= 0) reportText = `报告 ${FREE_MONTHLY_LIMIT}次已用完`;
+
     activationHtml = `
-      <div style="background:#fef3e6;border:1px solid #e07b20;border-radius:2px;padding:10px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <div style="font-weight:600;font-size:14px;">${TESTING_MODE ? '测试版' : '免费版'}</div>
-          <div style="font-size:12px;color:var(--text-secondary);">${usageText}</div>
+      <div style="background:#fef3e6;border:1px solid #e07b20;border-radius:2px;padding:10px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+          <div style="font-weight:600;font-size:14px;">免费版</div>
+          <button class="btn btn-sm" id="settings-upgrade-btn" style="background:#e07b20;color:#fff;border:none;padding:6px 12px;border-radius:2px;font-size:12px;font-weight:600;">升级 Pro</button>
         </div>
-        ${upgradeBtn}
+        <div style="font-size:12px;color:var(--text-secondary);line-height:1.8;">
+          <div>📄 ${reportText}</div>
+          <div>✨ AI润色：不限次</div>
+          <div>🎨 AI修图：<span style="color:#f53f3f;">需升级Pro</span></div>
+        </div>
       </div>`;
   }
 
@@ -2313,17 +2319,6 @@ function showSettingsPanel({ onSave }) {
       <div style="margin-bottom:12px;">
         <label style="font-size:13px;color:var(--text-secondary);">默认部门/车间</label>
         <input type="text" id="settings-department" value="${escapeHtml(presets.department || '')}" placeholder="如：压榨车间" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:2px;margin-top:4px;box-sizing:border-box;">
-      </div>
-
-      <div style="margin-bottom:16px;">
-        <label style="font-size:13px;color:var(--text-secondary);">我的部门列表（快捷切换）</label>
-        <div id="dept-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;margin-bottom:8px;">
-          ${depts.map(d => `<span class="dept-tag" style="background:#f2f3f5;padding:4px 10px;border-radius:2px;font-size:13px;cursor:pointer;" data-dept="${escapeHtml(d)}">${escapeHtml(d)} x</span>`).join('')}
-        </div>
-        <div style="display:flex;gap:8px;">
-          <input type="text" id="new-dept-input" placeholder="新增部门名称" style="flex:1;padding:6px;border:1px solid var(--border);border-radius:2px;font-size:13px;">
-          <button class="btn btn-sm btn-outline" id="add-dept-btn" style="flex-shrink:0;">+ 添加</button>
-        </div>
       </div>
 
       <button class="btn btn-primary btn-block" id="settings-save-btn">保存</button>
@@ -2347,7 +2342,7 @@ function showSettingsPanel({ onSave }) {
   // 导出数据
   overlay.querySelector('#settings-export-btn').onclick = async () => {
     try {
-      const { exportAllDataAsFile } = await import('./db.js?v=20260711i');
+      const { exportAllDataAsFile } = await import('./db.js?v=20260711j');
       await exportAllDataAsFile();
       showToast('数据已导出，请保存好备份文件');
     } catch (e) {
@@ -2380,7 +2375,7 @@ function showSettingsPanel({ onSave }) {
       if (!file) return;
       showToast('正在导入...');
       try {
-        const { importAllDataFromFile } = await import('./db.js?v=20260711i');
+        const { importAllDataFromFile } = await import('./db.js?v=20260711j');
         const result = await importAllDataFromFile(file);
         document.body.removeChild(overlay);
         showToast(`导入完成：${result.drafts}个草稿、${result.templates}个模板、${result.checklists}个清单、${result.reports}条报告`);
@@ -2420,36 +2415,10 @@ function showSettingsPanel({ onSave }) {
     if (e.target === overlay) { document.body.removeChild(overlay); }
   });
 
-  // 部门标签点击 → 删除
-  overlay.querySelector('#dept-list').addEventListener('click', (e) => {
-    const tag = e.target.closest('.dept-tag');
-    if (!tag) return;
-    const deptName = tag.dataset.dept;
-    const idx = depts.indexOf(deptName);
-    if (idx !== -1) depts.splice(idx, 1);
-    tag.remove();
-  });
-
-  // 添加新部门
-  overlay.querySelector('#add-dept-btn').onclick = () => {
-    const input = overlay.querySelector('#new-dept-input');
-    const name = input.value.trim();
-    if (!name) return;
-    if (depts.includes(name)) { showToast('部门已存在'); return; }
-    depts.push(name);
-    const tag = document.createElement('span');
-    tag.className = 'dept-tag';
-    tag.style.cssText = 'background:#f0ebe0;padding:4px 10px;border-radius:12px;font-size:13px;cursor:pointer;';
-    tag.dataset.dept = name;
-    tag.textContent = name + ' ✕';
-    overlay.querySelector('#dept-list').appendChild(tag);
-    input.value = '';
-  };
-
   document.getElementById('settings-save-btn').onclick = () => {
     const company = overlay.querySelector('#settings-company').value.trim();
     const department = overlay.querySelector('#settings-department').value.trim();
-    savePresets({ company, department, departments: depts });
+    savePresets({ company, department });
     document.body.removeChild(overlay);
     showToast('设置已保存');
     if (onSave) onSave();

@@ -1,10 +1,10 @@
 // app.js — 应用主入口：全局状态、页面路由、事件协调
 
-import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260711i';
-import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260711i';
+import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260711j';
+import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260711j';
 import { getTemplate, loadCustomTemplates } from '../templates/templates.js';
-import { callDoubaoOptimize } from './ai.js?v=20260711i';
-import { checkActivation, canGenerateReport, incrementUsage, activateCode, getUsageThisMonth, isFeatureAllowed, canPolishText, incrementPolishUsage, TESTING_MODE, POLISH_MONTHLY_LIMIT } from './activate.js?v=20260711i';
+import { callDoubaoOptimize } from './ai.js?v=20260711j';
+import { checkActivation, canGenerateReport, incrementUsage, activateCode, getUsageThisMonth, isFeatureAllowed, canPolishText, incrementPolishUsage, TESTING_MODE, POLISH_MONTHLY_LIMIT } from './activate.js?v=20260711j';
 import {
   showToast,
   renderHomePage,
@@ -16,7 +16,7 @@ import {
   renderGeneratePage,
   showUpgradePanel,
   initFeedbackButton,
-} from './ui.js?v=20260711i';
+} from './ui.js?v=20260711j';
 
 // ---------- 全局状态 ----------
 const state = {
@@ -69,7 +69,7 @@ async function handleImportDocx(file, reportType) {
 
   let parsed;
   try {
-    const { parseDocx } = await import('./importer.js?v=20260711i');
+    const { parseDocx } = await import('./importer.js?v=20260711j');
     parsed = await parseDocx(file);
   } catch (e) {
     showToast(e.message || '文件解析失败，请确认是工具生成的报告');
@@ -121,7 +121,7 @@ async function handleImportPhoto(file, reportType) {
 
   let result;
   try {
-    const { parsePhoto } = await import('./importer.js?v=20260711i');
+    const { parsePhoto } = await import('./importer.js?v=20260711j');
     result = await parsePhoto(file);
   } catch (e) {
     showToast('照片处理失败，请重试');
@@ -434,7 +434,7 @@ async function showGeneratePage() {
     loadTemplate(tpl);
     const total = state.items.length;
     const done = state.items.filter(i => i.afterPhoto).length;
-    const { buildOverview } = await import('./docx-gen.js?v=20260711i');
+    const { buildOverview } = await import('./docx-gen.js?v=20260711j');
     preOverview = buildOverview(state.headerInfo, total, done, total - done);
   } catch (e) { /* 使用空值 */ }
 
@@ -517,7 +517,7 @@ async function showGeneratePage() {
 
         // 保存报告历史
         try {
-          const { saveReport } = await import('./db.js?v=20260711i');
+          const { saveReport } = await import('./db.js?v=20260711j');
           await saveReport({
             type: state.reportType,
             typeName: template.name,
