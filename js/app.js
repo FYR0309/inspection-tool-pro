@@ -1,10 +1,10 @@
 // app.js — 应用主入口：全局状态、页面路由、事件协调
 
-import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260711e';
-import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260711e';
+import { saveDraft, getDraft, deleteDraft, listDrafts, getBackupInfo, getPresets, savePresets, getTodayStr, migrateFromV1 } from './db.js?v=20260711f';
+import { generateDocx, loadTemplate, buildOverview } from './docx-gen.js?v=20260711f';
 import { getTemplate, loadCustomTemplates } from '../templates/templates.js';
-import { callDoubaoOptimize } from './ai.js?v=20260711e';
-import { checkActivation, canGenerateReport, incrementUsage, activateCode, getUsageThisMonth, isFeatureAllowed } from './activate.js?v=20260711e';
+import { callDoubaoOptimize } from './ai.js?v=20260711f';
+import { checkActivation, canGenerateReport, incrementUsage, activateCode, getUsageThisMonth, isFeatureAllowed } from './activate.js?v=20260711f';
 import {
   showToast,
   renderHomePage,
@@ -15,7 +15,7 @@ import {
   showMergePanel,
   renderGeneratePage,
   showUpgradePanel,
-} from './ui.js?v=20260711e';
+} from './ui.js?v=20260711f';
 
 // ---------- 全局状态 ----------
 const state = {
@@ -68,7 +68,7 @@ async function handleImportDocx(file, reportType) {
 
   let parsed;
   try {
-    const { parseDocx } = await import('./importer.js?v=20260711e');
+    const { parseDocx } = await import('./importer.js?v=20260711f');
     parsed = await parseDocx(file);
   } catch (e) {
     showToast(e.message || '文件解析失败，请确认是工具生成的报告');
@@ -120,7 +120,7 @@ async function handleImportPhoto(file, reportType) {
 
   let result;
   try {
-    const { parsePhoto } = await import('./importer.js?v=20260711e');
+    const { parsePhoto } = await import('./importer.js?v=20260711f');
     result = await parsePhoto(file);
   } catch (e) {
     showToast('照片处理失败，请重试');
@@ -200,7 +200,7 @@ function checkDataLoss(drafts) {
   if (!backup || backup.drafts.length === 0) return; // 从来没有过草稿，正常
   // 数据库空了但之前有草稿 → 可能被浏览器清空了
   const daysAgo = Math.floor((Date.now() - backup.time) / 86400000);
-  showToast(`⚠️ 草稿数据丢失（${daysAgo}天前有${backup.drafts.length}条备份）`, 6000);
+  showToast(`草稿数据丢失（${daysAgo}天前有${backup.drafts.length}条备份）`, 6000);
 }
 
 function handleTypeSelection(type, resume, draftId, file, importReportType) {
@@ -423,7 +423,7 @@ async function showGeneratePage() {
     loadTemplate(tpl);
     const total = state.items.length;
     const done = state.items.filter(i => i.afterPhoto).length;
-    const { buildOverview } = await import('./docx-gen.js?v=20260711e');
+    const { buildOverview } = await import('./docx-gen.js?v=20260711f');
     preOverview = buildOverview(state.headerInfo, total, done, total - done);
   } catch (e) { /* 使用空值 */ }
 
@@ -502,7 +502,7 @@ async function showGeneratePage() {
 
         // 保存报告历史
         try {
-          const { saveReport } = await import('./db.js?v=20260711e');
+          const { saveReport } = await import('./db.js?v=20260711f');
           await saveReport({
             type: state.reportType,
             typeName: template.name,
@@ -564,11 +564,10 @@ window.addEventListener('error', (e) => {
   if (container && !container.textContent.trim()) {
     container.innerHTML = `
       <div style="text-align:center;padding:60px 20px;">
-        <div style="font-size:48px;margin-bottom:12px;">😵</div>
-        <p style="font-size:16px;font-weight:600;">出了点问题</p>
-        <p style="font-size:13px;color:#999;margin-bottom:16px;">请刷新页面重试</p>
-        <button class="btn btn-primary" onclick="location.reload()" style="font-size:14px;">🔄 刷新页面</button>
-        <p style="font-size:11px;color:#ccc;margin-top:12px;">如果问题持续出现，请清理浏览器缓存</p>
+        <p style="font-size:16px;font-weight:600;margin-bottom:8px;">出了点问题</p>
+        <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">请刷新页面重试</p>
+        <button class="btn btn-primary" onclick="location.reload()" style="font-size:14px;">刷新页面</button>
+        <p style="font-size:11px;color:var(--text-secondary);margin-top:12px;">如果问题持续出现，请清理浏览器缓存</p>
       </div>`;
   }
 });
