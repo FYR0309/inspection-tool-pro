@@ -2069,8 +2069,21 @@ function showUpgradePanel({ reason, message, currentUsage, onActivate, onSetting
         </div>
       </div>
 
-      <div style="background:#fef3e6;border-radius:2px;padding:8px;margin-bottom:12px;font-size:12px;color:var(--text-secondary);text-align:center;">
-        付款后截图联系开发者领取激活码
+      <div style="margin-bottom:14px;text-align:center;">
+        <h4 style="font-size:14px;margin-bottom:10px;">扫码支付</h4>
+        <div style="display:flex;gap:10px;justify-content:center;">
+          <div style="flex:1;max-width:200px;text-align:center;">
+            <img src="assets/wx-pay.jpg" alt="微信收款码" style="width:100%;border-radius:2px;border:1px solid var(--border);">
+            <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 0 0;">微信扫码支付</p>
+          </div>
+          <div style="flex:1;max-width:200px;text-align:center;">
+            <div style="width:100%;aspect-ratio:828/1124;background:#f5f5f5;border:1px dashed var(--border);border-radius:2px;display:flex;align-items:center;justify-content:center;">
+              <span style="font-size:12px;color:var(--text-secondary);">支付宝<br>即将支持</span>
+            </div>
+            <p style="font-size:11px;color:var(--text-secondary);margin:6px 0 0 0;">支付宝</p>
+          </div>
+        </div>
+        <p style="font-size:11px;color:var(--text-secondary);margin:8px 0 0 0;">扫码支付后，输入激活码即可解锁Pro版</p>
       </div>
 
       <div style="margin-bottom:12px;">
