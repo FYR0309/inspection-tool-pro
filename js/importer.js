@@ -1,8 +1,8 @@
 // importer.js — .docx 导入解析 + 照片 OCR
 // 依赖全局 JSZip 对象（index.html 中引入）
 
-import { DOUBAO_API_URL, DOUBAO_API_KEY, DOUBAO_MODEL } from './config.js';
-import { compressImage } from './utils.js?v=20260711f';
+import { DOUBAO_API_URL, DOUBAO_API_KEY, DOUBAO_MODEL } from './config.js?v=20260711g';
+import { compressImage } from './utils.js?v=20260711g';
 
 /**
  * 解析 .docx 文件，提取问题条目
