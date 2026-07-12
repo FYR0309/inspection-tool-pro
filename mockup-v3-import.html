@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>v3 模板导入引擎 — 交互原型</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
+    background: #e5e6eb;
+    color: #1d2129;
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .phone {
+    width: 390px; margin: 20px auto; background: #f2f3f5;
+    border-radius: 24px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    min-height: 844px;
+  }
+  .header-bar {
+    background: #fff; padding: 14px 16px; border-bottom: 1px solid #e5e6eb;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .header-bar .dot { width: 8px; height: 8px; border-radius: 50%; background: #2c5cc5; }
+  .header-bar span { font-weight: 600; font-size: 14px; }
+  .page { padding: 14px; }
+
+  /* ---- 首页 ---- */
+  h2 { font-size: 18px; margin-bottom: 2px; }
+  .subtitle { color: #86909c; font-size: 12px; margin-bottom: 10px; }
+  .presets-bar {
+    background: #f7f8fa; border: 1px solid #e5e6eb; border-radius: 2px;
+    padding: 6px 12px; font-size: 12px; color: #86909c; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  .section-label { font-size: 11px; color: #86909c; margin: 12px 0 6px; }
+
+  .card {
+    background: #fff; border: 1px solid #e5e6eb; border-radius: 2px;
+    padding: 12px; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;
+  }
+  .card-tag {
+    font-size: 11px; padding: 2px 8px; border-radius: 2px; color: #fff;
+    flex-shrink: 0; font-weight: 600; white-space: nowrap;
+  }
+  .card-tag.docx { background: #2c5cc5; }
+  .card-tag.xlsx { background: #00b42a; }
+  .card-body { flex: 1; min-width: 0; }
+  .card-title { font-weight: 600; font-size: 14px; }
+  .card-desc { font-size: 12px; color: #86909c; }
+  .card-btn {
+    background: none; border: none; font-size: 13px; padding: 6px;
+    cursor: pointer; color: #86909c; flex-shrink: 0;
+  }
+
+  .import-btn {
+    width: 100%; padding: 10px; border: 1px dashed #86909c; border-radius: 2px;
+    background: #fff; font-size: 14px; color: #2c5cc5; font-weight: 600;
+    cursor: pointer; text-align: center; margin-top: 6px;
+  }
+
+  .tabs { display: flex; gap: 0; margin-bottom: 12px; }
+  .tab {
+    flex: 1; padding: 8px; text-align: center; font-size: 13px; font-weight: 600;
+    border: 1px solid #e5e6eb; background: #fff; cursor: pointer; color: #86909c;
+  }
+  .tab:first-child { border-radius: 2px 0 0 2px; }
+  .tab:last-child { border-radius: 0 2px 2px 0; }
+  .tab.active { background: #2c5cc5; color: #fff; border-color: #2c5cc5; }
+
+  /* ---- 弹层 ---- */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 60;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .panel {
+    background: #fff; width: 100%; max-width: 390px;
+    border-radius: 8px 8px 0 0; padding: 18px 16px;
+    max-height: 85vh; overflow-y: auto;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  }
+  .panel h3 { font-size: 16px; margin-bottom: 6px; }
+  .panel .hint { font-size: 12px; color: #86909c; margin-bottom: 12px; }
+
+  .drop-zone {
+    border: 2px dashed #c9cdd4; border-radius: 2px; padding: 36px 20px;
+    text-align: center; color: #86909c; font-size: 14px; margin-bottom: 12px;
+    background: #fafbfc; cursor: pointer; transition: border-color 0.2s;
+  }
+  .drop-zone:hover { border-color: #2c5cc5; }
+  .drop-zone .icon { font-size: 32px; margin-bottom: 6px; }
+
+  .sheet-list { margin-bottom: 14px; }
+  .sheet-option {
+    padding: 10px 12px; border: 1px solid #e5e6eb; border-radius: 2px;
+    margin-bottom: 6px; display: flex; align-items: center; gap: 8px; cursor: pointer;
+  }
+  .sheet-option.selected { border-color: #2c5cc5; background: #f0f4ff; }
+  .sheet-option .radio {
+    width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #c9cdd4;
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  }
+  .sheet-option.selected .radio {
+    border-color: #2c5cc5; background: #2c5cc5;
+  }
+  .sheet-option.selected .radio::after {
+    content: ''; width: 6px; height: 6px; border-radius: 50%; background: #fff;
+  }
+
+  /* ---- 映射表 ---- */
+  .mapping-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 13px; }
+  .mapping-table th {
+    background: #f2f3f5; padding: 8px 10px; text-align: left;
+    font-size: 11px; color: #86909c; font-weight: 600; border-bottom: 1px solid #e5e6eb;
+  }
+  .mapping-table td {
+    padding: 8px 10px; border-bottom: 1px solid #f2f3f5; vertical-align: middle;
+  }
+  .mapping-table .col-num { color: #86909c; font-size: 12px; }
+  .mapping-table .col-name { font-weight: 500; }
+  .mapping-table select {
+    padding: 4px 8px; border: 1px solid #c9cdd4; border-radius: 2px;
+    font-size: 12px; background: #fff; width: 100%;
+  }
+  .mapping-table .status-badge {
+    font-size: 11px; padding: 2px 6px; border-radius: 2px; white-space: nowrap;
+  }
+  .status-ok { background: #e8f5ea; color: #00b42a; }
+  .status-guess { background: #fef3e6; color: #e07b20; }
+  .status-unknown { background: #fef0f0; color: #f53f3f; }
+
+  .data-preview {
+    background: #fafbfc; border: 1px solid #e5e6eb; border-radius: 2px;
+    padding: 8px 10px; margin-bottom: 14px; font-size: 12px; color: #86909c;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .data-preview strong { color: #1d2129; }
+  .data-preview .adjust-btn {
+    font-size: 11px; color: #2c5cc5; background: none; border: none; cursor: pointer; font-weight: 600;
+  }
+
+  .btn-row { display: flex; gap: 8px; }
+  .btn {
+    padding: 10px 18px; border-radius: 2px; font-size: 14px; font-weight: 600;
+    cursor: pointer; border: none; text-align: center;
+  }
+  .btn-block { flex: 1; }
+  .btn-primary { background: #2c5cc5; color: #fff; }
+  .btn-outline { background: #fff; color: #2c5cc5; border: 1px solid #2c5cc5; }
+
+  .divider { border: none; border-top: 1px solid #e5e6eb; margin: 14px 0; }
+
+  /* ---- 两列对比 ---- */
+  .compare-row { display: flex; gap: 12px; }
+  .compare-col { flex: 1; }
+  .compare-col h4 { font-size: 13px; margin-bottom: 8px; color: #86909c; }
+
+  .note { font-size: 11px; color: #86909c; margin-top: 8px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ -->
+<!-- 屏幕1：首页（我的模板区域，DOCX + XLSX 混排） -->
+<!-- ============================================================ -->
+<div class="phone">
+  <div class="header-bar"><div class="dot"></div><span>检查报告助手 v3</span></div>
+  <div class="page">
+    <h2>检查报告助手</h2>
+    <p class="subtitle">拍照记录问题 → AI润色 → 一键生成报告</p>
+
+    <div class="presets-bar">XX制造有限公司 · 压榨车间 · 2026-07-12 · 本月3次 + 赠送1次</div>
+
+    <div class="section-label">内置模板</div>
+    <div class="card" style="border-left:3px solid #2c5cc5;">
+      <span class="card-tag docx">DOCX</span>
+      <div class="card-body"><div class="card-title">安全检查报告</div><div class="card-desc">工厂车间安全检查，整改前后对比报告</div></div>
+    </div>
+    <div class="card" style="border-left:3px solid #e07b20;">
+      <span class="card-tag docx">DOCX</span>
+      <div class="card-body"><div class="card-title">现场检查报告</div><div class="card-desc">5S现场管理检查通报，含签名行</div></div>
+    </div>
+
+    <div class="section-label">我的模板 <span style="font-weight:400;">（共3个）</span></div>
+
+    <!-- DOCX 自定义模板 -->
+    <div class="card" style="border-left:3px solid #e07030;">
+      <span class="card-tag docx">DOCX</span>
+      <div class="card-body"><div class="card-title">工地安全整改报告</div><div class="card-desc">含整改前后照片</div></div>
+      <button class="card-btn">编辑</button>
+      <button class="card-btn">删除</button>
+    </div>
+
+    <!-- XLSX 自定义模板 1 -->
+    <div class="card" style="border-left:3px solid #00b42a;">
+      <span class="card-tag xlsx">XLSX</span>
+      <div class="card-body"><div class="card-title">仓库日检记录表</div><div class="card-desc">5列纯文字，下拉选项</div></div>
+      <button class="card-btn">编辑</button>
+      <button class="card-btn">删除</button>
+    </div>
+
+    <!-- XLSX 自定义模板 2 -->
+    <div class="card" style="border-left:3px solid #00b42a;">
+      <span class="card-tag xlsx">XLSX</span>
+      <div class="card-body"><div class="card-title">配电室巡检表</div><div class="card-desc">纯文字记录，含条件格式</div></div>
+      <button class="card-btn">编辑</button>
+      <button class="card-btn">删除</button>
+    </div>
+
+    <button class="import-btn">📥 导入新模板（.docx / .xlsx）</button>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 屏幕2：导入面板（支持 DOCX / XLSX / JSON） -->
+<!-- ============================================================ -->
+<div class="phone" style="margin-top:28px;">
+  <div class="page">
+    <div class="overlay" style="position:static;background:transparent;">
+      <div class="panel" style="margin:0 auto;border-radius:8px;">
+        <h3>导入模板</h3>
+        <p class="hint">支持 Word（.docx）、Excel（.xlsx）和 JSON 模板文件</p>
+
+        <!-- 格式 tab 切换（默认自动检测，也可手动切） -->
+        <div class="tabs">
+          <div class="tab active">自动检测</div>
+          <div class="tab">.docx</div>
+          <div class="tab">.xlsx</div>
+        </div>
+
+        <div class="drop-zone">
+          <div class="icon">📂</div>
+          <div>点击选择文件或拖拽到此处</div>
+          <div style="font-size:11px;color:#c9cdd4;margin-top:4px;">最大支持 30MB</div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-outline btn-block">取消</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 屏幕3：Sheet 选择器（XLSX 多 Sheet 有数据时才出现） -->
+<!-- ============================================================ -->
+<div class="phone" style="margin-top:28px;">
+  <div class="page">
+    <div class="overlay" style="position:static;background:transparent;">
+      <div class="panel" style="margin:0 auto;border-radius:8px;">
+        <h3>选择工作表</h3>
+        <p class="hint">检测到 3 个工作表都包含数据，请选择用作检查表的那一个</p>
+        <div class="sheet-list">
+          <div class="sheet-option selected">
+            <div class="radio"></div>
+            <div>
+              <div style="font-weight:600;font-size:14px;">Sheet1 — 车间巡检记录</div>
+              <div style="font-size:12px;color:#86909c;">6 列 · 20 行数据 · 检测到表头</div>
+            </div>
+          </div>
+          <div class="sheet-option">
+            <div class="radio"></div>
+            <div>
+              <div style="font-weight:600;font-size:14px;">Sheet2 — 月度统计</div>
+              <div style="font-size:12px;color:#86909c;">8 列 · 12 行数据 · 汇总表（非检查表）</div>
+            </div>
+          </div>
+          <div class="sheet-option">
+            <div class="radio"></div>
+            <div>
+              <div style="font-weight:600;font-size:14px;">Sheet3 — 设备清单</div>
+              <div style="font-size:12px;color:#86909c;">4 列 · 35 行数据</div>
+            </div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-outline btn-block">取消</button>
+          <button class="btn btn-primary btn-block">确认选择</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 屏幕4：映射确认面板（核心交互 — 对比 DOCX vs XLSX） -->
+<!-- ============================================================ -->
+<div class="phone" style="margin-top:28px;">
+  <div class="page">
+    <div class="overlay" style="position:static;background:transparent;">
+      <div class="panel" style="margin:0 auto;border-radius:8px;">
+
+        <!-- 场景一：DOCX 模板映射 -->
+        <h3>模板识别结果 — DOCX</h3>
+        <p class="hint" style="margin-bottom:6px;">
+          <span class="status-badge status-ok">已识别</span> ·
+          <span class="status-badge status-guess">猜测</span> ·
+          <span class="status-badge status-unknown">未知</span>
+        </p>
+
+        <div style="margin-bottom:10px;">
+          <label style="font-size:12px;color:#86909c;">模板名称</label>
+          <input type="text" value="工地安全整改报告" style="width:100%;padding:8px;border:1px solid #e5e6eb;border-radius:2px;font-size:14px;margin-top:3px;">
+        </div>
+
+        <div class="data-preview">
+          <span>数据区域：<strong>第2～50行</strong>（表头第1行）</span>
+          <button class="adjust-btn">手动调整</button>
+        </div>
+
+        <table class="mapping-table">
+          <thead><tr><th>#</th><th>列名</th><th>识别</th><th>类型</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="col-num">1</td><td class="col-name">序号</td>
+              <td><span class="status-badge status-ok">已识别</span></td>
+              <td><select><option>序号</option><option>描述</option><option selected>照片</option><option>备注</option><option>文字</option></select></td>
+            </tr>
+            <tr>
+              <td class="col-num">2</td><td class="col-name">检查项目</td>
+              <td><span class="status-badge status-ok">已识别</span></td>
+              <td><select><option>序号</option><option selected>描述</option><option>照片</option><option>备注</option><option>文字</option></select></td>
+            </tr>
+            <tr>
+              <td class="col-num">3</td><td class="col-name">整改前照片</td>
+              <td><span class="status-badge status-ok">已识别</span></td>
+              <td><select><option>序号</option><option>描述</option><option selected>照片</option><option>备注</option><option>文字</option></select></td>
+            </tr>
+            <tr>
+              <td class="col-num">4</td><td class="col-name">整改后照片</td>
+              <td><span class="status-badge status-ok">已识别</span></td>
+              <td><select><option>序号</option><option>描述</option><option selected>照片</option><option>备注</option><option>文字</option></select></td>
+            </tr>
+            <tr>
+              <td class="col-num">5</td><td class="col-name">备注</td>
+              <td><span class="status-badge status-guess">猜测</span></td>
+              <td><select><option>序号</option><option>描述</option><option>照片</option><option selected>备注</option><option>文字</option></select></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="btn-row">
+          <button class="btn btn-outline btn-block">取消</button>
+          <button class="btn btn-primary btn-block">保存模板</button>
+        </div>
+
+        <hr class="divider">
+
+        <!-- 场景二：XLSX 模板映射（列类型选项不同，无"照片"） -->
+        <h3 style="margin-top:4px;">模板识别结果 — XLSX</h3>
+        <p class="hint" style="margin-bottom:6px;">
+          <span class="status-badge status-ok">已识别</span> ·
+          <span class="status-badge status-guess">猜测</span>
+        </p>
+
+        <div style="margin-bottom:10px;">
+          <label style="font-size:12px;color:#86909c;">模板名称</label>
+          <input type="text" value="仓库日检记录表" style="width:100%;padding:8px;border:1px solid #e5e6eb;border-radius:2px;font-size:14px;margin-top:3px;">
+        </div>
+
+        <div class="data-preview">
+          <span>Sheet：<strong>Sheet1</strong> · 数据区域：<strong>B2:G50</strong>（表头第2行）</span>
+          <button class="adjust-btn">手动调整</button>
+        </div>
+
+        <table class="mapping-table">
+          <thead><tr><th>#</th><th>列名</th><th>识别</th><th>类型</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="col-num">1</td><td class="col-name">序号</td>
+              <td><span class="status-badge status-ok">已识别</span></td>
+              <td><select><option selected>序号</option><option>描述</option><option>文字</option><option>日期</option><option>数字</option></select></td>
+            </tr>
+            <tr>
+              <td class="col-num">2</td><td class="col-name">检查区域</td>
+              <td><span class="status-badge status-ok">已识别</span></td>
+              <td><select><option>序号</option><option selected>描述</option><option>文字</option><option>日期</option><option>数字</option></select></td>
+            </tr>
+            <tr>
+              <td class="col-num">3</td><td class="col-name">检查日期</td>
+              <td><span class="status-badge status-ok">已识别</span></td>
+              <td><select><option>序号</option><option>描述</option><option>文字</option><option selected>日期</option><option>数字</option></select></td>
+            </tr>
+            <tr>
+              <td class="col-num">4</td><td class="col-name">检查结果</td>
+              <td><span class="status-badge status-guess">猜测</span></td>
+              <td><select><option>序号</option><option>描述</option><option selected>文字</option><option>日期</option><option>数字</option></select></td>
+            </tr>
+            <tr>
+              <td class="col-num">5</td><td class="col-name">问题数量</td>
+              <td><span class="status-badge status-ok">已识别</span></td>
+              <td><select><option>序号</option><option>描述</option><option>文字</option><option>日期</option><option selected>数字</option></select></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="btn-row">
+          <button class="btn btn-outline btn-block">取消</button>
+          <button class="btn btn-primary btn-block">保存模板</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

@@ -59,16 +59,18 @@ function listTemplates() {
     industry: t.industry,
     description: t.description,
     isBuiltin: true,
+    sourceFormat: t.sourceFormat || 'docx',
   }));
-  // 过滤掉非模板记录（如 _original_docx_ 存储）
+  // 过滤掉非模板记录（如 _original_docx_ 存储和 _original_xlsx_ 存储）
   const custom = Object.values(customTemplates)
-    .filter(t => t && t.id && t.columns)
+    .filter(t => t && t.id && t.columns && !t.id.endsWith('_original') && !t.id.endsWith('_original_xlsx'))
     .map(t => ({
       id: t.id,
       name: t.name,
       industry: t.industry || '通用',
       description: t.description || '',
       isBuiltin: false,
+      sourceFormat: t.sourceFormat || 'docx',
     }));
   return [...builtin, ...custom];
 }
