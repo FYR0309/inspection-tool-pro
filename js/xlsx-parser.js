@@ -70,17 +70,28 @@ function detectSheets(workbook) {
       }
     }
 
-    // 检测第一行是否像表头（有文字内容的单元格比例 > 50%）
-    let headerCells = 0, totalCells = 0;
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      totalCells++;
-      const addr = XLSX.utils.encode_cell({ r: range.s.r, c });
-      const cell = sheet[addr];
-      if (cell && cell.v !== undefined && cell.v !== null && String(cell.v).trim() !== '') {
-        headerCells++;
+    // 检测是否像表头：前 15 行中找一行填充率 > 40% 且内容多样的行
+    let hasHeader = false;
+    const totalCols = range.e.c - range.s.c + 1;
+    const maxScan = Math.min(range.s.r + 15, range.e.r);
+    for (let r = range.s.r; r <= maxScan; r++) {
+      let filled = 0;
+      const uniqueValues = new Set();
+      for (let c = range.s.c; c <= range.e.c; c++) {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        const cell = sheet[addr];
+        if (cell && cell.v !== undefined && cell.v !== null && String(cell.v).trim() !== '') {
+          filled++;
+          uniqueValues.add(String(cell.v).trim());
+        }
       }
+      const ratio = totalCols > 0 ? filled / totalCols : 0;
+      const diversity = filled > 0 ? uniqueValues.size / filled : 0;
+      // 合格表头：填充率 ≥ 35%，多样性 ≥ 40%（排除合并标题行）
+      if (ratio >= 0.35 && diversity >= 0.4) { hasHeader = true; break; }
+      // 也接受填充率 ≥ 55% 的行（可能是简单表格只有 3-5 列）
+      if (ratio >= 0.55 && diversity >= 0.3) { hasHeader = true; break; }
     }
-    const hasHeader = totalCells > 0 && (headerCells / totalCells) > 0.4;
 
     sheets.push({ name, index: i, rowCount, colCount, nonEmptyCells, hasHeader });
   }
@@ -94,7 +105,17 @@ function detectSheets(workbook) {
 function selectSheet(workbook) {
   const sheets = detectSheets(workbook);
 
-  const sheetsWithData = sheets.filter(s => s.nonEmptyCells > 2);
+  // 过滤掉明显的非数据 Sheet（合并日志、目录等）
+  const skipNames = ['报告', '目录', '索引', 'readme', '说明', '汇总'];
+  let sheetsWithData = sheets.filter(s =>
+    s.nonEmptyCells > 2 && s.colCount >= 2 &&
+    !skipNames.some(kw => s.name.toLowerCase().includes(kw.toLowerCase()))
+  );
+
+  // 降级：如果过滤后没了，回退到所有有数据的 Sheet
+  if (sheetsWithData.length === 0) {
+    sheetsWithData = sheets.filter(s => s.nonEmptyCells > 2);
+  }
 
   if (sheetsWithData.length === 0) {
     // 全部空，用第一个
@@ -116,7 +137,8 @@ function selectSheet(workbook) {
 // ---------- 数据区域检测 ----------
 
 /**
- * 从 Sheet 中检测数据区域
+ * 从 Sheet 中检测数据区域。
+ * 能自动跳过合并标题行（如公司名称跨所有列合并），找到真正的列名表头。
  * @returns {{ headerRow: number, dataStart: number, dataEnd: number, colStart: number, colEnd: number }}
  */
 function detectDataRegion(sheet) {
@@ -124,33 +146,80 @@ function detectDataRegion(sheet) {
   if (!ref) return { headerRow: 0, dataStart: 1, dataEnd: 0, colStart: 0, colEnd: 0 };
 
   const range = XLSX.utils.decode_range(ref);
+  const totalCols = range.e.c - range.s.c + 1;
 
-  // 找表头行：第一行非空比例 > 40% 的行
-  let headerRow = range.s.r;
-  let bestRatio = 0;
-
-  // 检查前 3 行，找到最像表头的
-  for (let r = range.s.r; r <= Math.min(range.s.r + 2, range.e.r); r++) {
-    let filled = 0, total = 0;
+  /**
+   * 收集一行的填充信息：填充比例 + 内容多样性
+   * 合并标题行（公司名称）特征：高填充率、低多样性（所有格的值相同）
+   * 真实表头特征：高填充率、高多样性（每列文字不同）
+   */
+  function rowInfo(r) {
+    let filled = 0;
+    const uniqueValues = new Set();
     for (let c = range.s.c; c <= range.e.c; c++) {
-      total++;
       const addr = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[addr];
       if (cell && cell.v !== undefined && cell.v !== null && String(cell.v).trim() !== '') {
         filled++;
+        uniqueValues.add(String(cell.v).trim());
       }
     }
-    const ratio = total > 0 ? filled / total : 0;
-    if (ratio > bestRatio) {
-      bestRatio = ratio;
-      headerRow = r;
+    const ratio = totalCols > 0 ? filled / totalCols : 0;
+    const diversity = filled > 0 ? uniqueValues.size / filled : 0;
+    return { filled, ratio, diversity, uniqueCount: uniqueValues.size };
+  }
+
+  /**
+   * 判断一行是否像数据行（非表头）：首列为纯数字序号
+   * 中文企业模板的典型特征：数据行首列是 "1", "2", "3"..., 表头行是 "序号"
+   */
+  function looksLikeDataRow(r) {
+    const addr = XLSX.utils.encode_cell({ r, c: range.s.c });
+    const cell = sheet[addr];
+    if (cell && cell.v !== undefined && cell.v !== null) {
+      const v = String(cell.v).trim();
+      // 纯整数（含公式产生的数字）→ 序号 → 数据行
+      if (/^\d+$/.test(v)) return true;
+    }
+    return false;
+  }
+
+  // 找到真正的表头行：扫 15 行，跳过标题行和数据行
+  let headerRow = range.s.r;
+  let bestRatio = 0;
+  let bestRow = range.s.r;
+  const maxScan = Math.min(range.s.r + 15, range.e.r);
+
+  for (let r = range.s.r; r <= maxScan; r++) {
+    const info = rowInfo(r);
+
+    // 跳过合并标题行：填充率 > 30% 但多样性 < 25%（所有格文字几乎一样）
+    if (info.ratio > 0.3 && info.diversity < 0.25 && info.filled > 2) continue;
+
+    // 跳过单格填满宽表：标题文字合并但库未展开合并格值（只有 A1 有值）
+    if (info.filled === 1 && totalCols > 5 && info.ratio < 0.1) continue;
+
+    // 跳过数据行：首列为纯数字序号（如 "1", "2", "4"），避免和表头混淆
+    if (looksLikeDataRow(r)) continue;
+
+    if (info.ratio > bestRatio) {
+      bestRatio = info.ratio;
+      bestRow = r;
+    }
+
+    // 找到合格表头（填充率 ≥ 35% 且多样性 ≥ 40%）→ 立即停止
+    if (info.ratio >= 0.35 && info.diversity >= 0.4) {
+      bestRow = r;
+      break;
     }
   }
+
+  headerRow = bestRow;
 
   // 数据开始行 = 表头下一行
   const dataStart = headerRow + 1;
 
-  // 数据结束行：找到连续有数据的最后一行（允许有一行空行间隔）
+  // 数据结束行：找到连续有数据的最后一行（允许一行空行间隔）
   let dataEnd = range.e.r;
   let emptyCount = 0;
   for (let r = dataStart; r <= range.e.r; r++) {
