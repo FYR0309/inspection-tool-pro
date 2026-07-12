@@ -2512,7 +2512,6 @@ export {
   showUpgradePanel,
   showImportPanel,
   showTemplateConfirm,
-  showSheetSelector,
   showManualBuilder,
   showSettingsPanel,
   clearTypeInfoCache,
