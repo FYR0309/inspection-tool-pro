@@ -6,13 +6,20 @@
 import { DOUBAO_API_URL, DOUBAO_API_KEY, DOUBAO_MODEL } from './config.js';
 
 // XLSX 列类型关键词（不同于 DOCX：没有"照片"，有"日期""数字"）
+// 匹配规则：从左到右扫描，第一个包含关键词的类型即命中
+// text 是新增类型——列头匹配到文字类关键词时显式标记为 text（而非"未识别"）
 const XLSX_TYPE_KEYWORDS = {
   number:      ['序号', '编号', 'No.', '项次', '检查序号', '隐患编号', '问题编号', 'NO', 'serial', '#'],
   description: ['问题', '描述', '隐患', '检查发现', '不符合', '存在问题', '检查情况',
                 '检查内容', '检查项目', '具体描述', '现象', '情况', '不合格项', '检查事项',
-                '区域', '位置', '地点', '巡检区域', '检查部位'],
-  date:        ['日期', '时间', '检查日期', '整改期限', '完成时间', '期限', '记录日期', '巡检日期'],
-  number_val:  ['数量', '次数', '件数', '个数', '分值', '得分', '评分', '温度', '压力', '读数'],
+                '区域', '位置', '地点', '巡检区域', '检查部位',
+                '名称', '内容', '鉴定', '检修', '验收', '整改',
+                '修理', '维修', '材料', '结果', '部件', '资产', '存放'],
+  date:        ['日期', '时间', '检查日期', '整改期限', '完成时间', '期限', '记录日期', '巡检日期',
+                '出厂时间', '使用时间'],
+  number_val:  ['数量', '次数', '件数', '个数', '分值', '得分', '评分', '温度', '压力', '读数',
+                '单价', '金额', '台套', '功率'],
+  text:        ['规格', '型号', '厂家', '备注', '单位', '部门', '车间', '工段', '编制'],
 };
 
 /** 根据列头文字猜测列类型 */
@@ -33,6 +40,7 @@ function mapToColumnType(keywordType, index) {
     case 'description': return { type: 'description', field: 'description' };
     case 'date':        return { type: 'date', field: 'date_' + index };
     case 'number_val':  return { type: 'number_val', field: 'num_' + index };
+    case 'text':        return { type: 'text', field: 'text_' + index };
     default:            return { type: 'text', field: 'text_' + index };
   }
 }
