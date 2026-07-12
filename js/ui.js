@@ -293,7 +293,7 @@ async function renderHomePage({ presets, drafts, onSelectType }) {
       ` : ''}
 
       <div style="text-align:center;margin-top:8px;">
-        <button class="btn btn-outline" id="import-template-btn" style="width:100%;">导入新模板（.docx / .xlsx）</button>
+        <button class="btn btn-outline" id="import-template-btn" style="width:100%;">导入新模板（.docx）</button>
       </div>
 
       ${draftsHtml}
@@ -1485,7 +1485,7 @@ function showImportPanel({ onSelectType, onBack }) {
 
       <div id="import-drop-zone" style="border:2px dashed var(--border);border-radius:2px;padding:40px 20px;text-align:center;cursor:pointer;margin-bottom:12px;transition:border-color 0.2s;">
         <div style="font-size:14px;color:var(--text-secondary);">点击选择文件或拖拽到此处</div>
-        <input type="file" id="import-file-input" accept=".json,.docx,.xlsx" style="display:none;">
+        <input type="file" id="import-file-input" accept=".json,.docx" style="display:none;">
       </div>
 
       <div id="import-status" style="display:none;text-align:center;padding:12px;background:#fdf3e0;border-radius:10px;margin-bottom:10px;">
@@ -1587,177 +1587,26 @@ function showImportPanel({ onSelectType, onBack }) {
         statusText.textContent = '解析失败：' + (e.message || '未知错误');
         setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
       }
-    } else if (ext === 'xlsx' || ext === 'xls') {
-      statusText.textContent = '正在解析 Excel 模板...';
-      try {
-        const { parseXlsxTemplate } = await import('./xlsx-parser.js');
-        const result = await parseXlsxTemplate(file);
-
-        if (!result.success) {
-          statusText.textContent = result.error || '解析失败';
-          setTimeout(() => {
-            document.body.removeChild(overlay);
-            showManualBuilder({ onSave: async (tpl) => {
-              tpl.sourceFormat = 'xlsx';
-              const { saveTemplate } = await import('./db.js?v=20260712a');
-              const record = await saveTemplate({ ...tpl, source: 'manual', isBuiltin: false });
-              refreshCustomTemplate(record.id, tpl);
-              clearTypeInfoCache();
-              showToast(`模板"${tpl.name}"创建成功`);
-              onBack();
-            }, onCancel: onBack });
-          }, 2000);
-          return;
-        }
-
-        // 是否需要 Sheet 选择
-        if (result.needsSheetSelection) {
-          document.body.removeChild(overlay);
-          showSheetSelector({
-            sheets: result.sheets,
-            workbook: result._workbook,
-            buffer: result._buffer,
-            fileName: file.name,
-            onBack,
-          });
-          return;
-        }
-
-        // 存储原始 .xlsx 文件（用于克隆引擎）
-        try {
-          const { storeOriginalXlsxTemplate } = await import('./xlsx-template-cloner.js');
-          await storeOriginalXlsxTemplate(result.template.id, { arrayBuffer: () => Promise.resolve(result._buffer), name: file.name });
-        } catch (e) {
-          console.warn('存储原始 XLSX 模板失败:', e);
-        }
-
-        document.body.removeChild(overlay);
-        showTemplateConfirm(result, { onBack });
-      } catch (e) {
-        statusText.textContent = '解析失败：' + (e.message || '未知错误');
-        setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
-      }
     } else {
-      statusText.textContent = '不支持的文件格式，请上传 .json、.docx 或 .xlsx';
+      statusText.textContent = '不支持的文件格式，请上传 .json 或 .docx';
       setTimeout(() => { statusDiv.style.display = 'none'; }, 3000);
     }
   }
-}
-
-// ---------- Sheet 选择器（XLSX 多 Sheet 时弹出）----------
-
-function showSheetSelector({ sheets, workbook, buffer, fileName, onBack }) {
-  const overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:61;display:flex;align-items:flex-end;justify-content:center;';
-
-  overlay.innerHTML = `
-    <div style="background:#fff;width:100%;max-width:480px;border-radius:8px 8px 0 0;padding:16px;max-height:80vh;overflow-y:auto;">
-      <h3 style="margin-bottom:4px;">选择工作表</h3>
-      <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px;">
-        检测到 ${sheets.length} 个工作表都包含数据，请选择用作检查表的那个
-      </p>
-      <div class="sheet-list" id="sheet-list">
-        ${sheets.map((s, i) => `
-          <div class="sheet-option" data-index="${i}" style="padding:10px 12px;border:1px solid var(--border);border-radius:2px;margin-bottom:6px;display:flex;align-items:center;gap:8px;cursor:pointer;${i === 0 ? 'border-color:var(--primary);background:#f0f4ff;' : ''}">
-            <span class="sheet-radio" style="width:18px;height:18px;border-radius:50%;border:1.5px solid ${i === 0 ? 'var(--primary)' : '#c9cdd4'};flex-shrink:0;display:flex;align-items:center;justify-content:center;${i === 0 ? 'border-color:var(--primary);background:var(--primary);' : ''}">
-              ${i === 0 ? '<span style="width:6px;height:6px;border-radius:50%;background:#fff;"></span>' : ''}
-            </span>
-            <div style="flex:1;min-width:0;">
-              <div style="font-weight:600;font-size:14px;">${escapeHtml(s.name)}${s.hasHeader ? ' — 检测到表头' : ''}</div>
-              <div style="font-size:12px;color:var(--text-secondary);">${s.colCount} 列 · ${s.rowCount} 行 · ${s.nonEmptyCells} 个非空单元格</div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-outline btn-block" id="sheet-cancel-btn">取消</button>
-        <button class="btn btn-primary btn-block" id="sheet-confirm-btn">确认选择</button>
-      </div>
-    </div>`;
-
-  document.body.appendChild(overlay);
-
-  let selectedIndex = 0;
-
-  // 选项点击切换
-  overlay.querySelectorAll('.sheet-option').forEach(opt => {
-    opt.addEventListener('click', () => {
-      selectedIndex = parseInt(opt.dataset.index);
-      overlay.querySelectorAll('.sheet-option').forEach((o, i) => {
-        o.style.borderColor = i === selectedIndex ? 'var(--primary)' : 'var(--border)';
-        o.style.background = i === selectedIndex ? '#f0f4ff' : '#fff';
-        const radio = o.querySelector('.sheet-radio');
-        radio.style.borderColor = i === selectedIndex ? 'var(--primary)' : '#c9cdd4';
-        radio.style.background = i === selectedIndex ? 'var(--primary)' : 'transparent';
-        radio.innerHTML = i === selectedIndex ? '<span style="width:6px;height:6px;border-radius:50%;background:#fff;"></span>' : '';
-      });
-    });
-  });
-
-  overlay.querySelector('#sheet-cancel-btn').onclick = () => {
-    document.body.removeChild(overlay);
-    onBack();
-  };
-
-  overlay.querySelector('#sheet-confirm-btn').onclick = async () => {
-    const selectedSheet = sheets[selectedIndex];
-    document.body.removeChild(overlay);
-
-    // 用选定 Sheet 重新解析
-    showToast('正在解析 ' + selectedSheet.name + '...');
-    try {
-      const { parseXlsxTemplate } = await import('./xlsx-parser.js');
-      const result = await parseXlsxTemplate(buffer, selectedSheet.name);
-      if (!result.success) {
-        showToast(result.error || '解析失败');
-        onBack();
-        return;
-      }
-
-      // 存储原始 .xlsx 文件
-      try {
-        const { storeOriginalXlsxTemplate } = await import('./xlsx-template-cloner.js');
-        await storeOriginalXlsxTemplate(result.template.id, { arrayBuffer: () => Promise.resolve(buffer), name: fileName || 'template.xlsx' });
-      } catch (e) {
-        console.warn('存储原始 XLSX 模板失败:', e);
-      }
-
-      showTemplateConfirm(result, { onBack });
-    } catch (e) {
-      showToast('解析失败：' + (e.message || '未知错误'));
-      onBack();
-    }
-  };
-
-  overlay.addEventListener('click', (e) => {
-    if (e.target === overlay) { document.body.removeChild(overlay); onBack(); }
-  });
 }
 
 // ---------- 模板识别确认页 ----------
 
 function showTemplateConfirm(parseResult, { onBack }) {
   const { template, unknowns } = parseResult;
-  const isXlsx = template.sourceFormat === 'xlsx';
-  const formatLabel = isXlsx ? 'XLSX' : 'DOCX';
-  const formatColor = isXlsx ? '#00b42a' : '#2c5cc5';
 
-  // 列类型选项：DOCX 和 XLSX 不同
-  const docxTypeOptions = [
+  // 列类型选项
+  const typeOptions = [
     { value: 'number', label: '序号' },
     { value: 'description', label: '问题描述' },
     { value: 'image', label: '照片' },
     { value: 'remark', label: '备注' },
     { value: 'text', label: '普通文字' },
   ];
-  const xlsxTypeOptions = [
-    { value: 'number', label: '序号' },
-    { value: 'description', label: '描述' },
-    { value: 'text', label: '文字' },
-    { value: 'date', label: '日期' },
-    { value: 'number_val', label: '数字' },
-  ];
-  const typeOptions = isXlsx ? xlsxTypeOptions : docxTypeOptions;
 
   const overlay = document.createElement('div');
   overlay.id = 'tpl-confirm-overlay';
@@ -1781,19 +1630,11 @@ function showTemplateConfirm(parseResult, { onBack }) {
       </div>`;
   }).join('');
 
-  // 数据区域信息（XLSX 特有）
-  const dataRegionHtml = isXlsx ? `
-    <div class="data-preview" style="background:#fafbfc;border:1px solid var(--border);border-radius:2px;padding:8px 10px;margin-bottom:12px;font-size:12px;color:var(--text-secondary);display:flex;align-items:center;justify-content:space-between;">
-      <span>Sheet：<strong>${escapeHtml(template.sheetName || '')}</strong> · 数据行：<strong>${(template.dataRegion?.dataEnd || 0) - (template.dataRegion?.dataStart || 0) + 1}</strong> 行 · 表头第 <strong>${template.dataRegion?.headerRow || 1}</strong> 行</span>
-      <button class="adjust-btn" style="font-size:11px;color:var(--primary);background:none;border:none;cursor:pointer;font-weight:600;">手动调整</button>
-    </div>
-  ` : '';
-
   overlay.innerHTML = `
     <div style="background:#fff;width:100%;max-width:480px;border-radius:8px 8px 0 0;padding:16px;max-height:85vh;overflow-y:auto;">
       <h3 style="margin-bottom:4px;">
         模板识别结果
-        <span style="font-size:11px;padding:2px 8px;border-radius:2px;color:#fff;background:${formatColor};vertical-align:middle;margin-left:6px;">${formatLabel}</span>
+        <span style="font-size:11px;padding:2px 8px;border-radius:2px;color:#fff;background:#2c5cc5;vertical-align:middle;margin-left:6px;">DOCX</span>
       </h3>
       <p style="font-size:12px;color:var(--text-secondary);margin-bottom:12px;">
         已识别 | 猜测(可改) | 未知(请手动选择)
@@ -1803,8 +1644,6 @@ function showTemplateConfirm(parseResult, { onBack }) {
         <label style="font-size:13px;color:var(--text-secondary);">模板名称</label>
         <input type="text" id="tpl-name-input" value="${escapeHtml(template.name)}" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:2px;margin-top:4px;box-sizing:border-box;">
       </div>
-
-      ${dataRegionHtml}
 
       <div style="margin-bottom:4px;font-size:13px;color:var(--text-secondary);">表格列识别</div>
       <div style="border:1px solid var(--border);border-radius:2px;margin-bottom:14px;">
@@ -1843,19 +1682,15 @@ function showTemplateConfirm(parseResult, { onBack }) {
       if (sel.value === 'number') template.columns[i].field = '_index';
       else if (sel.value === 'description') template.columns[i].field = 'description';
       else if (sel.value === 'remark') template.columns[i].field = '_remark';
-      else if (sel.value === 'date') template.columns[i].field = 'date_' + i;
-      else if (sel.value === 'number_val') template.columns[i].field = 'num_' + i;
       else if (sel.value === 'text') template.columns[i].field = 'text_' + i;
     });
 
     const { saveTemplate } = await import('./db.js?v=20260712a');
-    const sourceVal = isXlsx ? 'xlsx-imported' : 'docx-imported';
-    const record = await saveTemplate({ ...template, source: sourceVal, isBuiltin: false, sourceFormat: template.sourceFormat || (isXlsx ? 'xlsx' : 'docx') });
+    const record = await saveTemplate({ ...template, source: 'docx-imported', isBuiltin: false, sourceFormat: 'docx' });
     refreshCustomTemplate(record.id, template);
     clearTypeInfoCache();
 
     document.body.removeChild(overlay);
-    // 询问是否立即使用
     showConfirm({
       title: '✅ 模板已就绪',
       message: `"${template.name}"导入成功！要现在开始创建报告吗？`,
@@ -1873,14 +1708,8 @@ function showTemplateConfirm(parseResult, { onBack }) {
       aiBtn.disabled = true;
       aiBtn.textContent = 'AI 识别中...';
       try {
-        let guessed;
-        if (isXlsx) {
-          const { aiGuessXlsxColumns } = await import('./xlsx-parser.js');
-          guessed = await aiGuessXlsxColumns(unknowns);
-        } else {
-          const { aiGuessColumns } = await import('./docx-parser.js');
-          guessed = await aiGuessColumns(unknowns);
-        }
+        const { aiGuessColumns } = await import('./docx-parser.js');
+        const guessed = await aiGuessColumns(unknowns);
         document.body.removeChild(overlay);
         showTemplateConfirm({ template, unknowns: guessed }, { onBack });
       } catch (e) {
